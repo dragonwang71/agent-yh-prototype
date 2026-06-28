@@ -26,11 +26,11 @@ Agent yh Prototype は、日常の買い物・外出相談を題材にした AI 
 - 実行ログによる agent の観測可能性
 - 日本語、英語、中国語の UI 切り替え
 
-## Agent Capabilities
+## Agent の機能設計
 
 このプロジェクトでは、外部 API をそのまま並べるのではなく、agent が使える能力として整理しています。
 
-| Capability | 実装 | 役割 |
+| 機能 | 実装 | 役割 |
 | --- | --- | --- |
 | Intent Parser | OpenAI API + 独自 prompt | 依頼内容を読み、shopping / outing と必要な条件を抽出 |
 | Next Tool Selector | OpenAI API + 独自 prompt | 天気結果を見て、次に探す施設タイプを判断 |
@@ -42,29 +42,29 @@ Agent yh Prototype は、日常の買い物・外出相談を題材にした AI 
 
 OpenAI 側の 3 つは、OpenAI が提供する専用 skill ではありません。モデル API を使って、このプロトタイプ用に設計した判断・整理レイヤーです。
 
-## Demo Flow
+## 動作フロー
 
 ```mermaid
 flowchart TD
-  A["User request"] --> B["Intent Parser"]
-  B --> C{"Scenario"}
+  A["ユーザーの依頼"] --> B["Intent Parser"]
+  B --> C{"シナリオ判定"}
 
-  C -->|"Shopping"| D["Yahoo Shopping"]
-  D --> E["Rank product candidates"]
+  C -->|"買い物"| D["Yahoo Shopping"]
+  D --> E["商品候補を整理"]
 
-  C -->|"Outing"| F["Yahoo Geocoder"]
+  C -->|"外出相談"| F["Yahoo Geocoder"]
   F --> G["Yahoo Weather"]
   G --> H["Next Tool Selector"]
   H --> I["Yahoo Local Search"]
-  I --> J["Rank nearby candidates"]
+  I --> J["周辺候補を整理"]
 
-  E --> K["Chat answer"]
+  E --> K["チャット回答"]
   J --> K
-  K --> L["Execution log"]
-  K --> M["Memory update"]
+  K --> L["実行ログ"]
+  K --> M["Memory 更新"]
 ```
 
-## Architecture
+## アーキテクチャ
 
 ```mermaid
 flowchart LR
@@ -83,18 +83,18 @@ flowchart LR
   UI --> Storage["localStorage"]
 ```
 
-## Run Locally
+## ローカル実行
 
 ```bash
 npm install
 npm run dev -- --hostname 127.0.0.1 --port 3100
 ```
 
-Open `http://127.0.0.1:3100`.
+ブラウザで `http://127.0.0.1:3100` を開きます。
 
-## Environment Variables
+## 環境変数
 
-Create `.env.local`.
+`.env.local` を作成します。
 
 ```bash
 YAHOO_CLIENT_ID=your_yahoo_developer_client_id
@@ -102,32 +102,32 @@ OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-`.env.local` is ignored by git. Do not commit API keys.
+`.env.local` は Git に含めません。API key はコミットしないでください。
 
-## Checks
+## 動作確認
 
 ```bash
 npm run typecheck
 npm run build
 ```
 
-## Project Structure
+## プロジェクト構成
 
 ```text
 app/
   api/
-    agent/      Agent routing, tool calls, and response formatting
-    memory/     Memory update endpoint
-  page.tsx      App entry
+    agent/      Agent のルーティング、tool 呼び出し、回答整形
+    memory/     Memory 更新 API
+  page.tsx      アプリの入口
 components/
-  AppShell.tsx  Chat UI, history, language, execution log
+  AppShell.tsx  チャット UI、履歴、言語切り替え、実行ログ
   MemoryPanel.tsx
 lib/
-  demoData.ts   Default prompts and memory
-  storage.ts    Local persistence and legacy-history migration
-  types.ts      Shared types
+  demoData.ts   初期プロンプトと初期 Memory
+  storage.ts    localStorage 保存と旧履歴の移行
+  types.ts      共通型定義
 ```
 
-## Design Notes
+## 設計メモ
 
-The prototype keeps the main answer focused on what the user needs: recommended products or places, concise reasons, and direct links. Tool names, latency, and intermediate decisions are shown in the execution log instead of the main answer, so the interface stays readable while still making the agent behavior observable.
+メインの回答には、ユーザーがすぐ使える候補、短い理由、開けるリンクだけを出します。tool 名、処理時間、中間判断は右側の実行ログに分けることで、画面を読みやすく保ちながら、agent の動きも確認できるようにしています。
