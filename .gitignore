@@ -1,6 +1,7 @@
 .next
 node_modules
 out
+output
 dist
 *.tsbuildinfo
 .env*
@@ -9,3 +10,5 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .DS_Store
+
+.vercel

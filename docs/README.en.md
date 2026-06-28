@@ -6,6 +6,16 @@ Agent yh Prototype is a web prototype for an AI agent that helps with everyday s
 
 It accepts a natural-language request, uses OpenAI to structure the intent, calls Yahoo! JAPAN Shopping / Map / Weather APIs, and returns recommendations grounded in live external data. The right-side execution log shows how the agent reasoned through the task and which tools were used.
 
+## Demo
+
+**[Try Agent yh in the browser →](https://agent-yh-prototype.vercel.app)**
+
+You can try shopping assistance, weather-aware outing suggestions, Memory, and execution logs directly.
+
+[![Agent yh walkthrough](assets/agent-yh-preview.gif)](assets/agent-yh-walkthrough.mp4)
+
+[Open the walkthrough video](assets/agent-yh-walkthrough.mp4)
+
 ## Features
 
 - Intent routing from natural language into shopping or outing flows
