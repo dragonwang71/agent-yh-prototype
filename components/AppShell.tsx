@@ -1,13 +1,8 @@
 "use client";
 
 import {
-  Activity,
   BookOpen,
   Bot,
-  Bookmark,
-  CheckCircle2,
-  Circle,
-  ExternalLink,
   Info,
   Languages,
   MessageSquare,
@@ -17,8 +12,13 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode, RefObject } from "react";
+import { AgentResponse } from "@/components/AgentResponse";
 import { MemoryPanel } from "@/components/MemoryPanel";
+import { ObservabilityPanel } from "@/components/ObservabilityPanel";
+import { isAgentStreamEvent } from "@/lib/agent/contracts";
 import { createId, defaultMemory, formatClock, inferScenario, taskOptions } from "@/lib/demoData";
+import { htmlLang, languageOptions, uiCopy } from "@/lib/i18n";
+import type { UiCopy, UiLanguage } from "@/lib/i18n";
 import {
   loadConversations,
   loadLanguage,
@@ -27,16 +27,10 @@ import {
   saveLanguage,
   saveMemory
 } from "@/lib/storage";
-import type { AgentRun, ChatMessage, Conversation, ScenarioId, StepStatus, ToolStatus, UserMemory } from "@/lib/types";
+import type { AgentFeedback, AgentRun, ChatMessage, Conversation, ScenarioId, UserMemory } from "@/lib/types";
 
 type ViewMode = "chat" | "memory";
 type UtilityPanel = "help" | "language" | null;
-type UiLanguage = "zh" | "ja" | "en";
-
-type AgentStreamEvent = {
-  type: "run";
-  run: AgentRun;
-};
 
 function createMemoryContext(memoryDocument: string, source: ScenarioId): UserMemory[] {
   const text = memoryDocument.trim();
@@ -85,291 +79,6 @@ function conversationMessagesForMemory(conversation: Conversation) {
     );
 }
 
-function memoryPreviewLines(memoryDocument: string) {
-  return memoryDocument
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("- "))
-    .map((line) => line.slice(2))
-    .slice(0, 3);
-}
-
-const languageOptions: Array<{ id: UiLanguage; label: string }> = [
-  { id: "ja", label: "日本語" },
-  { id: "en", label: "English" },
-  { id: "zh", label: "中文" }
-];
-
-const htmlLang: Record<UiLanguage, string> = {
-  ja: "ja",
-  en: "en",
-  zh: "zh-CN"
-};
-
-const uiCopy = {
-  ja: {
-    newChat: "新規チャット",
-    memory: "メモリー",
-    chatHistory: "チャット履歴",
-    delete: "削除",
-    emptyHistory: "最初のメッセージを送ると、ここに会話が表示されます。",
-    helpLabel: "説明",
-    languageLabel: "言語",
-    helpIntro: "使えること",
-    helpItems: [
-      "買い物：条件に合う商品を探し、価格・レビュー・商品ページを見られます。",
-      "外出：場所と天気を見て、雨なら屋内、晴れなら歩きやすい候補を出します。",
-      "地図：候補の場所をすぐ開けます。",
-      "メモリー：あなたが残した好みを次の相談に反映します。"
-    ],
-    languageTitle: "言語",
-    selected: "選択中",
-    clickToFill: "クリックして入力欄へ",
-    tasks: {
-      shopping: {
-        title: "Shopping agent",
-        prompt:
-          "来月から一人暮らしを始めるので、2万円以内で電子レンジを探して。レビューが良くて、省スペースなものがいい。"
-      },
-      outing: {
-        title: "Weather agent",
-        prompt:
-          "土曜日に渋谷で友達と会う。雨なら屋内、晴れなら散歩できる場所を提案して。"
-      }
-    },
-    memoryIntro:
-      "あなたが残した好みを表示します。次の依頼を、より近い条件で考えるために使います。",
-    memoryEmpty: "まだ保存された好みはありません。",
-    update: "更新",
-    updating: "更新中",
-    updateFailed: "更新失敗",
-    preview: "プレビュー",
-    edit: "編集",
-    assistantRunning: "実行中",
-    assistantPending: "依頼内容を確認しています...",
-    recommendationTitle: {
-      shopping: "おすすめ商品（上位3件）",
-      outing: "近くの候補"
-    },
-    stepStatus: {
-      done: "完了",
-      running: "実行中",
-      waiting: "待機中"
-    },
-    composerPlaceholder: "Agent yh にメッセージを送る...",
-    send: "送信",
-    apiErrorSummary:
-      "外部 API への接続に失敗しました。キー、ネットワーク、利用制限を確認してから再実行してください。",
-    apiErrorStatus: "API接続失敗",
-    logTitle: "実行ログ",
-    noActiveRun: "実行なし",
-    startedAt: "開始",
-    planSteps: "実行トレース",
-    toolCalls: "ツール呼び出し",
-    approvalHistory: "承認履歴",
-    memoryUpdates: "メモリー更新",
-    memoryKind: {
-      add: "追加",
-      update: "更新"
-    },
-    noMemory: "まだ保存された好みはありません。",
-    toolStatus: {
-      success: "成功",
-      waiting: "待機",
-      error: "エラー"
-    },
-    approvalStatus: {
-      pending: "承認待ち",
-      approved: "承認済み",
-      declined: "却下"
-    },
-    agentTitle: {
-      shopping: "Shopping agent",
-      outing: "Weather agent"
-    }
-  },
-  en: {
-    newChat: "New chat",
-    memory: "Memory",
-    chatHistory: "Chat History",
-    delete: "Delete",
-    emptyHistory: "Send a first message and the conversation will appear here.",
-    helpLabel: "Help",
-    languageLabel: "Language",
-    helpIntro: "What this can do",
-    helpItems: [
-      "Shopping: find products that match your conditions, then open prices, reviews, and product pages.",
-      "Outings: check place and weather context, then suggest indoor options for rain or walkable options for clear weather.",
-      "Maps: open each suggested place directly.",
-      "Memory: reuse preferences you choose to keep for the next request."
-    ],
-    languageTitle: "Language",
-    selected: "Selected",
-    clickToFill: "Click to fill the input",
-    tasks: {
-      shopping: {
-        title: "Shopping agent",
-        prompt:
-          "I am moving into my first apartment next month. Find a compact microwave under 20,000 yen with good reviews."
-      },
-      outing: {
-        title: "Weather agent",
-        prompt:
-          "I am meeting a friend in Shibuya on Saturday. If it rains, suggest indoor options; if it is sunny, suggest somewhere walkable."
-      }
-    },
-    memoryIntro:
-      "Shows preferences you chose to keep, so the next request can start closer to your needs.",
-    memoryEmpty: "No saved preferences yet.",
-    update: "Update",
-    updating: "Updating",
-    updateFailed: "Update failed",
-    preview: "Preview",
-    edit: "Edit",
-    assistantRunning: "Running",
-    assistantPending: "Reading your request...",
-    recommendationTitle: {
-      shopping: "Top product recommendations",
-      outing: "Nearby options"
-    },
-    stepStatus: {
-      done: "Done",
-      running: "Running",
-      waiting: "Waiting"
-    },
-    composerPlaceholder: "Message Agent yh...",
-    send: "Send",
-    apiErrorSummary:
-      "Could not connect to the external API. Check the key, network, and usage limits, then try again.",
-    apiErrorStatus: "API connection failed",
-    logTitle: "Execution log",
-    noActiveRun: "No active run",
-    startedAt: "Started",
-    planSteps: "Execution trace",
-    toolCalls: "Tool calls",
-    approvalHistory: "Approval history",
-    memoryUpdates: "Memory updates",
-    memoryKind: {
-      add: "Add",
-      update: "Update"
-    },
-    noMemory: "No saved preferences yet.",
-    toolStatus: {
-      success: "success",
-      waiting: "waiting",
-      error: "error"
-    },
-    approvalStatus: {
-      pending: "pending",
-      approved: "approved",
-      declined: "declined"
-    },
-    agentTitle: {
-      shopping: "Shopping agent",
-      outing: "Weather agent"
-    }
-  },
-  zh: {
-    newChat: "新聊天",
-    memory: "记忆",
-    chatHistory: "聊天历史",
-    delete: "删除",
-    emptyHistory: "发送第一条消息后，对话会出现在这里。",
-    helpLabel: "说明",
-    languageLabel: "语言",
-    helpIntro: "可以做这些事",
-    helpItems: [
-      "购物：按你的条件找商品，查看价格、评价，并打开商品页。",
-      "外出：结合地点和天气，下雨时推荐室内，天气好时推荐适合走走的地方。",
-      "地图：每个地点都可以直接打开。",
-      "记忆：把你保留的偏好用于下一次请求。"
-    ],
-    languageTitle: "语言",
-    selected: "已选择",
-    clickToFill: "点击填入输入框",
-    tasks: {
-      shopping: {
-        title: "Shopping agent",
-        prompt:
-          "我下个月开始一个人住，想找 2 万日元以内的电子微波炉。希望评价好、省空间。"
-      },
-      outing: {
-        title: "Weather agent",
-        prompt:
-          "周六要在涩谷和朋友见面。如果下雨就推荐室内方案，如果晴天就推荐适合散步的地方。"
-      }
-    },
-    memoryIntro:
-      "这里显示你保留下来的偏好。下一次请求时，会用它来更接近你的条件。",
-    memoryEmpty: "还没有保存偏好。",
-    update: "更新",
-    updating: "更新中",
-    updateFailed: "更新失败",
-    preview: "预览",
-    edit: "编辑",
-    assistantRunning: "运行中",
-    assistantPending: "正在查看你的需求...",
-    recommendationTitle: {
-      shopping: "推荐商品（前 3 个）",
-      outing: "附近候选"
-    },
-    stepStatus: {
-      done: "完成",
-      running: "运行中",
-      waiting: "等待中"
-    },
-    composerPlaceholder: "给 Agent yh 发送消息...",
-    send: "发送",
-    apiErrorSummary:
-      "连接外部 API 失败。请确认 key、网络和使用限制后再试。",
-    apiErrorStatus: "API 连接失败",
-    logTitle: "执行日志",
-    noActiveRun: "暂无运行",
-    startedAt: "开始",
-    planSteps: "执行轨迹",
-    toolCalls: "工具调用",
-    approvalHistory: "确认记录",
-    memoryUpdates: "记忆更新",
-    memoryKind: {
-      add: "添加",
-      update: "更新"
-    },
-    noMemory: "还没有保存偏好。",
-    toolStatus: {
-      success: "成功",
-      waiting: "等待",
-      error: "错误"
-    },
-    approvalStatus: {
-      pending: "待确认",
-      approved: "已确认",
-      declined: "已拒绝"
-    },
-    agentTitle: {
-      shopping: "Shopping agent",
-      outing: "Weather agent"
-    }
-  }
-};
-
-type UiCopy = (typeof uiCopy)[UiLanguage];
-
-function getRecommendationTitle(copy: UiCopy, scenario: ScenarioId, language: UiLanguage) {
-  if (scenario !== "outing") {
-    return copy.recommendationTitle[scenario];
-  }
-
-  if (language === "en") {
-    return "Nearby options";
-  }
-
-  if (language === "zh") {
-    return "附近候选";
-  }
-
-  return "近くの候補";
-}
-
 export function AppShell() {
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [draft, setDraft] = useState("");
@@ -387,6 +96,7 @@ export function AppShell() {
   const [deleteTargetId, setDeleteTargetId] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const requestControllerRef = useRef<AbortController | null>(null);
 
   const activeRun = activeRunId ? runs[activeRunId] : undefined;
   const copy = uiCopy[language];
@@ -410,10 +120,15 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (isReady) {
-      saveConversations(conversations);
+    if (!isReady) {
+      return;
     }
+
+    const saveTimer = window.setTimeout(() => saveConversations(conversations), 120);
+    return () => window.clearTimeout(saveTimer);
   }, [conversations, isReady]);
+
+  useEffect(() => () => requestControllerRef.current?.abort(), []);
 
   useEffect(() => {
     if (isReady) {
@@ -433,7 +148,7 @@ export function AppShell() {
     }
 
     scrollArea.scrollTop = scrollArea.scrollHeight;
-  }, [activeRunId, messages.length, runs, viewMode]);
+  }, [activeRunId, messages.length, viewMode]);
 
   function upsertConversation(nextConversation: Conversation) {
     setConversations((current) => [
@@ -447,7 +162,14 @@ export function AppShell() {
     return cleaned.length > 22 ? `${cleaned.slice(0, 22)}...` : cleaned || "New chat";
   }
 
+  function cancelActiveRequest() {
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+    setIsRunning(false);
+  }
+
   function startNewChat() {
+    cancelActiveRequest();
     setViewMode("chat");
     setDraft("");
     setDraftScenario(null);
@@ -461,6 +183,7 @@ export function AppShell() {
   }
 
   function selectConversation(conversation: Conversation) {
+    cancelActiveRequest();
     setViewMode("chat");
     setDraft("");
     setDraftScenario(null);
@@ -484,6 +207,7 @@ export function AppShell() {
   }
 
   function openMemory() {
+    cancelActiveRequest();
     setViewMode("memory");
     setUtilityPanel(null);
     setDeleteTargetId("");
@@ -582,6 +306,10 @@ export function AppShell() {
     });
   }
 
+  function recordFeedback(runId: string, feedback: AgentFeedback) {
+    updateRun(runId, (run) => ({ ...run, feedback }));
+  }
+
   async function readAgentStream(
     response: Response,
     onRun: (run: AgentRun) => void
@@ -620,11 +348,21 @@ export function AppShell() {
           continue;
         }
 
-        const event = JSON.parse(line) as AgentStreamEvent;
+        const event: unknown = JSON.parse(line);
 
-        if (event.type === "run") {
+        if (isAgentStreamEvent(event)) {
           onRun(event.run);
         }
+      }
+    }
+
+    const finalLine = buffer.trim();
+
+    if (finalLine) {
+      const event: unknown = JSON.parse(finalLine);
+
+      if (isAgentStreamEvent(event)) {
+        onRun(event.run);
       }
     }
   }
@@ -639,6 +377,7 @@ export function AppShell() {
     }
 
     const scenario = draftScenario ?? inferScenario(text);
+    const controller = new AbortController();
     const runId = createId("run");
     const conversationId = activeConversationId || createId("chat");
     const startedAt = formatClock();
@@ -662,6 +401,9 @@ export function AppShell() {
       }
     ];
     let nextRuns = { ...runs };
+
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = controller;
 
     setViewMode("chat");
     setActiveConversationId(conversationId);
@@ -689,7 +431,8 @@ export function AppShell() {
           startedAt,
           memory: createMemoryContext(memory, scenario),
           language
-        })
+        }),
+        signal: controller.signal
       });
 
       if (!response.ok) {
@@ -708,6 +451,10 @@ export function AppShell() {
         });
       });
     } catch {
+      if (controller.signal.aborted) {
+        return;
+      }
+
       const errorRun: AgentRun = {
         id: runId,
         scenario,
@@ -741,12 +488,15 @@ export function AppShell() {
         nextRuns
       });
     } finally {
-      setIsRunning(false);
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setIsRunning(false);
+      }
     }
   }
 
   return (
-    <div className="grid h-dvh grid-cols-1 overflow-hidden bg-[#f7f4ee] text-[#24211c] lg:grid-cols-[280px_minmax(0,1fr)_280px]">
+    <div className="grid h-dvh grid-cols-1 overflow-hidden bg-white text-[#111827] lg:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[248px_minmax(0,1fr)_320px]">
       <Sidebar
         activeConversationId={activeConversationId}
         activePanel={utilityPanel}
@@ -764,7 +514,7 @@ export function AppShell() {
         viewMode={viewMode}
       />
 
-      <main className="flex min-h-0 flex-col overflow-hidden bg-[#f7f4ee]">
+      <main className="flex min-h-0 flex-col overflow-hidden bg-white">
         {viewMode === "memory" ? (
           <MemoryPanel
             memory={memory}
@@ -774,8 +524,8 @@ export function AppShell() {
           />
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-6" ref={scrollAreaRef}>
-              <div className="mx-auto flex w-full max-w-[820px] flex-col gap-6">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-7" ref={scrollAreaRef}>
+              <div aria-live="polite" className="mx-auto flex w-full max-w-[880px] flex-col gap-7" role="log">
                 {messages.length === 0 ? (
                   <StarterConversations copy={copy} onSelectTask={selectTask} />
                 ) : (
@@ -791,10 +541,10 @@ export function AppShell() {
                     }
 
                     return (
-                      <AssistantRun
+                      <AgentResponse
                         key={message.id}
                         copy={copy}
-                        language={language}
+                        onFeedback={(feedback) => recordFeedback(run.id, feedback)}
                         run={run}
                         time={message.time}
                       />
@@ -853,10 +603,13 @@ function Sidebar({
   viewMode: ViewMode;
 }) {
   return (
-    <aside className="flex min-h-0 border-b border-[#ded8cf] bg-[#f7f4ee] lg:h-dvh lg:flex-col lg:border-b-0 lg:border-r">
+    <aside className="flex min-h-0 border-b border-[#e5e7eb] bg-[#fafafa] lg:h-dvh lg:flex-col lg:border-b-0 lg:border-r">
       <div className="flex min-h-0 w-full flex-1 flex-col gap-4 p-3 lg:p-4">
         <div className="shrink-0 px-1 pt-1">
-          <h1 className="truncate text-lg font-semibold leading-tight">Agent yh</h1>
+          <h1 className="flex items-center gap-2 truncate text-lg font-bold leading-tight tracking-tight text-[#111827]">
+            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-[#ff0033]" />
+            Agent yh
+          </h1>
         </div>
 
         <div className="grid shrink-0 grid-cols-2 gap-1 lg:grid-cols-1">
@@ -873,8 +626,8 @@ function Sidebar({
           </NavButton>
         </div>
 
-        <div className="hidden min-h-0 flex-1 flex-col border-t border-[#ded8cf] pt-4 lg:flex">
-          <div className="mb-2 flex items-center gap-2 px-2 text-sm font-medium text-[#82796c]">
+        <div className="hidden min-h-0 flex-1 flex-col border-t border-[#e5e7eb] pt-4 lg:flex">
+          <div className="mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#6b7280]">
             <MessageSquare size={13} />
             {copy.chatHistory}
           </div>
@@ -885,8 +638,8 @@ function Sidebar({
                   <button
                     className={`w-full rounded-md px-2.5 py-2 pr-14 text-left text-base transition ${
                       conversation.id === activeConversationId && viewMode === "chat"
-                        ? "bg-[#ebe7df] text-[#24211c]"
-                        : "text-[#5f574c] hover:bg-[#eeebe4] hover:text-[#24211c]"
+                        ? "bg-white text-[#111827] shadow-sm ring-1 ring-[#e5e7eb]"
+                        : "text-[#4b5563] hover:bg-[#f3f4f6] hover:text-[#111827]"
                     }`}
                     onClick={() => onSelectConversation(conversation)}
                     onContextMenu={(event) => {
@@ -912,7 +665,7 @@ function Sidebar({
                 </div>
               ))
             ) : (
-              <p className="px-2 text-sm leading-6 text-[#6f675b]">
+              <p className="px-2 text-sm leading-6 text-[#6b7280]">
                 {copy.emptyHistory}
               </p>
             )}
@@ -966,8 +719,8 @@ function NavButton({
 }) {
   return (
     <button
-      className={`flex min-h-10 items-center justify-center gap-3 rounded-md px-2 text-base font-medium outline-none transition focus-visible:bg-[#eeebe4] lg:justify-start ${
-        active ? "bg-[#ebe7df]" : "bg-transparent hover:bg-[#eeebe4]"
+      className={`flex min-h-11 items-center justify-center gap-3 rounded-lg px-2 text-base font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#ff99ad] lg:justify-start ${
+        active ? "bg-white shadow-sm ring-1 ring-[#e5e7eb]" : "bg-transparent hover:bg-[#f3f4f6]"
       }`}
       data-testid={testId}
       onClick={onClick}
@@ -995,8 +748,8 @@ function UtilityButton({
   return (
     <button
       aria-label={label}
-      className={`flex h-10 w-10 items-center justify-center rounded-md outline-none transition focus-visible:bg-[#eeebe4] ${
-        active ? "bg-[#ebe7df] text-[#24211c]" : "text-[#5f574c] hover:bg-[#eeebe4]"
+      className={`flex h-10 w-10 items-center justify-center rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[#ff99ad] ${
+        active ? "bg-white text-[#111827] shadow-sm ring-1 ring-[#e5e7eb]" : "text-[#4b5563] hover:bg-[#f3f4f6]"
       }`}
       data-testid={testId}
       onClick={onClick}
@@ -1020,13 +773,13 @@ function UtilityPopover({
   panel: Exclude<UtilityPanel, null>;
 }) {
   return (
-    <div className="absolute bottom-12 left-0 right-0 z-10 max-h-[320px] overflow-y-auto rounded-xl bg-[#fbfaf7] p-3 shadow-sm ring-1 ring-[#ded8cf]">
+    <div className="absolute bottom-12 left-0 right-0 z-10 max-h-[320px] overflow-y-auto rounded-xl bg-white p-3 shadow-lg ring-1 ring-[#e5e7eb]">
       {panel === "help" ? (
         <>
-          <p className="text-sm leading-6 text-[#5f574c]">
+          <p className="text-sm leading-6 text-[#4b5563]">
             {copy.helpIntro}
           </p>
-          <div className="mt-3 space-y-1 text-sm leading-6 text-[#5f574c]">
+          <div className="mt-3 space-y-1 text-sm leading-6 text-[#4b5563]">
             {copy.helpItems.map((item) => (
               <p key={item}>{item}</p>
             ))}
@@ -1042,8 +795,8 @@ function UtilityPopover({
               <button
                 className={`flex min-h-9 items-center justify-between rounded-md px-2 text-sm transition ${
                   language === option.id
-                    ? "bg-[#e4eadb] text-[#24211c]"
-                    : "text-[#5f574c] hover:bg-[#eeebe4]"
+                    ? "bg-[#fff0f3] text-[#b00024]"
+                    : "text-[#4b5563] hover:bg-[#f3f4f6]"
                 }`}
                 key={option.id}
                 onClick={() => onLanguageChange(option.id as UiLanguage)}
@@ -1068,31 +821,31 @@ function StarterConversations({
   onSelectTask: (scenario: ScenarioId) => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 pt-8">
+    <div className="mx-auto flex w-full max-w-[800px] flex-col gap-3 pt-8 sm:pt-12">
       {taskOptions.map((option) => {
         const Icon = option.icon;
         const task = copy.tasks[option.id];
 
         return (
           <button
-            className="group rounded-2xl border border-[#ded8cf] bg-[#fbfaf7] px-4 py-4 text-left outline-none transition hover:bg-[#eeebe4] focus-visible:ring-2 focus-visible:ring-[#bfcfba]"
+            className="group rounded-2xl border border-[#e5e7eb] bg-white px-4 py-4 text-left shadow-[0_1px_2px_rgba(17,24,39,0.03)] outline-none transition hover:-translate-y-0.5 hover:border-[#d1d5db] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#ff99ad] motion-reduce:hover:translate-y-0"
             data-testid={`starter-${option.id}`}
             key={option.id}
             onClick={() => onSelectTask(option.id)}
             type="button"
           >
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#1f7a4d] text-white">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#fff0f3] text-[#d6002b]">
                 <Icon size={18} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="text-base font-semibold text-[#24211c]">
+                  <h2 className="text-base font-semibold text-[#111827]">
                     {task.title}
                   </h2>
-                  <span className="text-sm text-[#7c7466]">{copy.clickToFill}</span>
+                  <span className="text-sm font-medium text-[#d6002b]">{copy.clickToFill}</span>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-[#4f483f]">
+                <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-[#4b5563]">
                   {task.prompt}
                 </p>
               </div>
@@ -1107,7 +860,7 @@ function StarterConversations({
 function UserMessage({ message }: { message: Extract<ChatMessage, { role: "user" }> }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[84%] rounded-2xl bg-[#e4eadb] px-4 py-2.5 text-base leading-8 text-[#24211c]">
+      <div className="max-w-[88%] rounded-2xl rounded-tr-md bg-[#f3f4f6] px-4 py-2.5 text-base leading-8 text-[#1f2937]">
         <div className="whitespace-pre-wrap">{message.content}</div>
       </div>
     </div>
@@ -1116,107 +869,18 @@ function UserMessage({ message }: { message: Extract<ChatMessage, { role: "user"
 
 function AssistantPending({ copy }: { copy: UiCopy }) {
   return (
-    <section className="flex items-start gap-3 text-[#7c7466]">
-      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#1f7a4d] text-white">
+    <section aria-live="polite" className="flex items-start gap-3 text-[#6b7280]">
+      <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ff0033] text-white shadow-sm">
         <Bot size={18} />
       </div>
       <div className="min-w-0 flex-1 pt-1">
         <div className="mb-2 flex items-baseline gap-2">
-          <span className="font-semibold text-[#24211c]">Agent yh</span>
+          <span className="font-semibold text-[#111827]">Agent yh</span>
           <span className="text-sm">{copy.assistantRunning}</span>
         </div>
         <p className="text-base leading-7">{copy.assistantPending}</p>
       </div>
     </section>
-  );
-}
-
-function AssistantRun({
-  copy,
-  language,
-  run,
-  time
-}: {
-  copy: UiCopy;
-  language: UiLanguage;
-  run: AgentRun;
-  time: string;
-}) {
-  return (
-    <section className="flex items-start gap-3">
-      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#1f7a4d] text-white">
-        <Bot size={18} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="mb-2 flex items-baseline gap-2">
-          <span className="font-semibold">Agent yh</span>
-          <span className="text-sm text-[#8d8578]">{time}</span>
-        </div>
-
-        <div className="bg-[#f7f4ee]">
-          <p className="text-base leading-7 text-[#2d2a25]">{run.summary}</p>
-
-          {run.recommendations.length ? (
-            <div className="mt-5">
-              <SectionTitle icon={<Bookmark size={16} />}>
-                {getRecommendationTitle(copy, run.scenario, language)}
-              </SectionTitle>
-              <div className="mt-2">
-                {run.recommendations.map((item) => (
-                  <RecommendationRow item={item} key={item.id} />
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function SectionTitle({ children, icon }: { children: ReactNode; icon: ReactNode }) {
-  return (
-    <h2 className="flex items-center gap-2 text-base font-semibold text-[#24211c]">
-      {icon}
-      {children}
-    </h2>
-  );
-}
-
-function RecommendationRow({ item }: { item: AgentRun["recommendations"][number] }) {
-  return (
-    <div className="grid gap-2 border-b border-[#ded8cf] py-3 last:border-b-0 sm:grid-cols-[26px_1fr_38px] sm:items-start">
-      <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded bg-[#1f7a4d] text-xs font-semibold text-white">
-        {item.rank}
-      </div>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h3 className="min-w-0 text-sm font-semibold leading-6 text-[#24211c]">{item.title}</h3>
-          {item.price ? <span className="text-base font-semibold text-[#1f7a4d]">{item.price}</span> : null}
-        </div>
-        <p className="text-sm leading-6 text-[#6f675b]">{item.meta}</p>
-        <p className="text-sm leading-6 text-[#4f483f]">
-          <span className="font-medium text-[#8a6b1f]">{item.score}</span>
-          {item.reason ? ` · ${item.reason}` : ""}
-        </p>
-      </div>
-      <div className="flex sm:justify-end">
-        <a
-          aria-label={item.actionLabel}
-          className={`flex h-8 w-8 items-center justify-center rounded-md border border-[#ded8cf] transition ${
-            item.actionUrl
-              ? "text-[#4f483f] hover:bg-[#eeebe4]"
-              : "pointer-events-none text-[#9a9183]"
-          }`}
-          href={item.actionUrl ?? "#"}
-          rel="noreferrer"
-          target="_blank"
-          title={item.actionLabel}
-        >
-          <ExternalLink size={15} />
-        </a>
-      </div>
-    </div>
   );
 }
 
@@ -1236,13 +900,14 @@ function Composer({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <div className="shrink-0 bg-[#f7f4ee] px-4 py-4 sm:px-6">
+    <div className="shrink-0 border-t border-[#f3f4f6] bg-white px-4 py-4 sm:px-7">
       <form
-        className="mx-auto flex w-full max-w-[820px] items-end gap-3 rounded-xl border border-[#ded8cf] bg-[#fbfaf7] px-3 py-3"
+        className="mx-auto flex w-full max-w-[880px] items-end gap-3 rounded-2xl border border-[#d1d5db] bg-white px-3 py-3 shadow-[0_6px_24px_rgba(17,24,39,0.08)] transition focus-within:border-[#ff6685] focus-within:ring-2 focus-within:ring-[#ffe0e6]"
         onSubmit={onSubmit}
       >
         <textarea
-          className="min-h-10 flex-1 bg-transparent px-1 py-2 text-base leading-7 text-[#24211c] outline-none placeholder:text-[#9a9183]"
+          aria-label={copy.composerPlaceholder}
+          className="max-h-36 min-h-10 flex-1 overflow-y-auto bg-transparent px-1 py-2 text-base leading-7 text-[#111827] outline-none placeholder:text-[#9ca3af]"
           data-testid="composer-textarea"
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
@@ -1253,10 +918,12 @@ function Composer({
           }}
           placeholder={copy.composerPlaceholder}
           ref={composerRef}
+          rows={1}
           value={draft}
         />
         <button
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1f7a4d] text-white transition hover:bg-[#155f3b] disabled:bg-[#b8ad9d]"
+          aria-label={copy.send}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ff0033] text-white transition hover:bg-[#d6002b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad] disabled:bg-[#d1d5db]"
           disabled={!draft.trim() || isRunning}
           title={copy.send}
           type="submit"
@@ -1266,142 +933,4 @@ function Composer({
       </form>
     </div>
   );
-}
-
-function ObservabilityPanel({
-  copy,
-  memory,
-  run
-}: {
-  copy: UiCopy;
-  memory: string;
-  run?: AgentRun;
-}) {
-  const approvals = run?.approvals ?? [];
-  const memoryUpdates = run?.memoryUpdates ?? [];
-  const memorySnippets = memoryPreviewLines(memory);
-
-  return (
-    <aside className="hidden min-h-0 border-l border-[#ded8cf] bg-[#f7f4ee] lg:flex lg:h-dvh lg:flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
-        <div className="shrink-0">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
-            <Activity size={20} />
-            {copy.logTitle}
-          </h2>
-          <div className="mt-5 flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2 text-[#1f7a4d]">
-              <span className="h-2 w-2 rounded-full bg-[#1f7a4d]" />
-              {run?.statusLabel ?? copy.noActiveRun}
-            </span>
-            <span className="text-[#7c7466]">{copy.startedAt}: {run?.startedAt ?? "-"}</span>
-          </div>
-        </div>
-
-        <LogSection title={copy.planSteps}>
-          <div className="grid gap-3">
-            {(run?.plan ?? []).map((step) => (
-              <div className="grid grid-cols-[18px_1fr_auto] items-center gap-2 text-sm" key={step.id}>
-                <StatusIcon status={step.status} />
-                <span className="min-w-0 truncate text-[#4f483f]">{step.label}</span>
-                <span className="text-xs text-[#7c7466]">{step.latency ?? "-"}</span>
-              </div>
-            ))}
-          </div>
-        </LogSection>
-
-        <LogSection title={copy.toolCalls}>
-          <div>
-            {(run?.tools ?? []).map((tool) => (
-              <div
-                className="grid grid-cols-[1fr_72px_58px] items-center border-b border-[#ded8cf] py-2 text-xs text-[#4f483f] last:border-b-0"
-                key={tool.id}
-                title={tool.input}
-              >
-                <span className="min-w-0 truncate">{tool.tool}</span>
-                <span className={tool.status === "success" ? "text-[#1f7a4d]" : tool.status === "error" ? "text-[#b42318]" : "text-[#8d8578]"}>
-                  {copy.toolStatus[tool.status]}
-                </span>
-                <span>{tool.latency}</span>
-              </div>
-            ))}
-          </div>
-        </LogSection>
-
-        {approvals.length ? (
-          <LogSection title={copy.approvalHistory}>
-            <div>
-              {approvals.map((approval) => (
-                <div className="border-b border-[#ded8cf] py-3 text-sm last:border-b-0" key={approval.id}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span
-                      className={`font-medium ${
-                        approval.status === "approved"
-                          ? "text-[#1f7a4d]"
-                          : approval.status === "declined"
-                            ? "text-[#b42318]"
-                            : "text-[#8a6b1f]"
-                      }`}
-                    >
-                      {copy.approvalStatus[approval.status]}
-                    </span>
-                    <span className="text-xs text-[#7c7466]">{approval.time}</span>
-                  </div>
-                  <p className="mt-1 leading-5 text-[#4f483f]">{approval.label}</p>
-                </div>
-              ))}
-            </div>
-          </LogSection>
-        ) : null}
-
-        {memoryUpdates.length || memorySnippets.length ? (
-          <LogSection title={copy.memoryUpdates}>
-            <div>
-              {memoryUpdates.map((memory) => (
-                <div className="grid grid-cols-[58px_42px_1fr] gap-2 border-b border-[#ded8cf] py-3 text-xs last:border-b-0" key={memory.id}>
-                  <span className="text-[#7c7466]">{memory.time.slice(0, 5)}</span>
-                  <span className="font-semibold text-[#1f7a4d]">{copy.memoryKind[memory.kind]}</span>
-                  <span className="leading-5 text-[#4f483f]">{memory.text}</span>
-                </div>
-              ))}
-            </div>
-            {memorySnippets.length ? (
-              <div className="mt-3 space-y-2 border-t border-[#ded8cf] pt-3">
-                {memorySnippets.map((item) => (
-                  <p className="text-xs leading-5 text-[#5f574c]" key={item}>
-                    {item}
-                  </p>
-                ))}
-              </div>
-            ) : null}
-          </LogSection>
-        ) : null}
-      </div>
-    </aside>
-  );
-}
-
-function LogSection({ children, title }: { children: ReactNode; title: string }) {
-  return (
-    <section>
-      <h3 className="mb-3 text-sm font-semibold text-[#24211c]">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function StatusIcon({ status }: { status: StepStatus | ToolStatus }) {
-  if (status === "done" || status === "success") {
-    return <CheckCircle2 className="text-[#1f7a4d]" size={16} />;
-  }
-
-  if (status === "error") {
-    return <Circle className="text-[#b42318]" size={16} />;
-  }
-
-  if (status === "running") {
-    return <Activity className="text-[#1f7a4d]" size={16} />;
-  }
-
-  return <Circle className="text-[#9a9183]" size={16} />;
 }

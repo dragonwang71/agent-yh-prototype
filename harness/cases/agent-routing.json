@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Japanese shopping request",
+    "prompt": "2万円以内でレビューが良い省スペースの電子レンジを探して",
+    "scenario": "shopping",
+    "shoppingQuery": "電子レンジ",
+    "priceMax": 20000
+  },
+  {
+    "name": "English shopping request",
+    "prompt": "Find a compact refrigerator under 50000 yen with good reviews",
+    "scenario": "shopping",
+    "shoppingQuery": "冷蔵庫",
+    "priceMax": 50000
+  },
+  {
+    "name": "Chinese shopping request",
+    "prompt": "想找 3 万日元以内、省空间的洗衣机",
+    "scenario": "shopping",
+    "shoppingQuery": "洗濯機",
+    "priceMax": 30000
+  },
+  {
+    "name": "Japanese rainy outing",
+    "prompt": "土曜日に渋谷で会う。雨なら屋内の場所を提案して",
+    "scenario": "outing",
+    "place": "渋谷",
+    "localQueryWhenRaining": "カフェ"
+  },
+  {
+    "name": "English museum outing",
+    "prompt": "Meet near Shinjuku and find a museum if the weather is bad",
+    "scenario": "outing",
+    "place": "新宿",
+    "localQueryWhenRaining": "美術館"
+  }
+]

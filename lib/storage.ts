@@ -1,15 +1,15 @@
 "use client";
 
 import { defaultMemory } from "@/lib/demoData";
+import type { UiLanguage } from "@/lib/i18n";
 import type { Conversation } from "@/lib/types";
-
-type UiLanguage = "zh" | "ja" | "en";
 
 const conversationsKey = "agent-yh-conversations";
 const memoryKey = "agent-yh-memory";
 const languageKey = "agent-yh-language";
 const languageDefaultVersionKey = "agent-yh-language-default-version";
 const currentLanguageDefaultVersion = "ja-default-2026-06";
+const maxStoredConversations = 20;
 const legacyConversationMarkers = [
   "代々木公園",
   "スクランブルスクエア",
@@ -96,14 +96,17 @@ export function loadConversations(): Conversation[] {
       window.localStorage.setItem(conversationsKey, JSON.stringify(liveConversations));
     }
 
-    return liveConversations;
+    return liveConversations.slice(0, maxStoredConversations);
   } catch {
     return [];
   }
 }
 
 export function saveConversations(conversations: Conversation[]) {
-  window.localStorage.setItem(conversationsKey, JSON.stringify(conversations));
+  window.localStorage.setItem(
+    conversationsKey,
+    JSON.stringify(conversations.slice(0, maxStoredConversations))
+  );
 }
 
 export function loadMemory() {
