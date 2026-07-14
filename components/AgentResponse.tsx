@@ -6,6 +6,7 @@ import {
   Check,
   ExternalLink,
   Sparkles,
+  Star,
   ThumbsDown,
   ThumbsUp
 } from "lucide-react";
@@ -36,7 +37,7 @@ export function AgentResponse({ copy, onFeedback, run, time }: AgentResponseProp
           <span className="text-sm text-[#6b7280]">{time}</span>
         </div>
 
-        <div className="rounded-2xl border border-[#e5e7eb] bg-white p-4 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-5">
+        <div className="py-1">
           <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-[#ff0033]">
             {!isRunning ? (
               <Sparkles aria-hidden="true" size={14} />
@@ -49,16 +50,16 @@ export function AgentResponse({ copy, onFeedback, run, time }: AgentResponseProp
 
           {run.recommendations.length ? (
             <div className="mt-5">
-              <div className="flex flex-wrap items-end justify-between gap-2 border-b border-[#e5e7eb] pb-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-base font-semibold text-[#111827]">
                   {getRecommendationTitle(copy, run.scenario)}
                 </h2>
                 <span className="text-xs text-[#6b7280]">{copy.sourceLabel}</span>
               </div>
 
-              <div className="mt-3 grid gap-3">
+              <div className="mt-5 grid gap-6">
                 {run.recommendations.map((item) => (
-                  <RecommendationCard item={item} key={item.id} />
+                  <RecommendationResult item={item} key={item.id} scenario={run.scenario} />
                 ))}
               </div>
             </div>
@@ -73,51 +74,88 @@ export function AgentResponse({ copy, onFeedback, run, time }: AgentResponseProp
   );
 }
 
-function RecommendationCard({ item }: { item: Recommendation }) {
+function RecommendationResult({
+  item,
+  scenario
+}: {
+  item: Recommendation;
+  scenario: AgentRun["scenario"];
+}) {
+  const linkedImage = item.imageUrl && item.actionUrl;
+
   return (
     <article
-      className="rounded-xl border border-[#e5e7eb] bg-[#fcfcfd] p-4 transition hover:border-[#d1d5db] hover:bg-white"
+      className={`grid min-w-0 gap-3 sm:gap-4 ${item.imageUrl ? "grid-cols-[104px_minmax(0,1fr)] sm:grid-cols-[128px_minmax(0,1fr)]" : "grid-cols-1"}`}
       data-testid={`recommendation-${item.rank}`}
     >
-      <div className="flex items-start gap-3">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111827] text-xs font-bold text-white">
-          {item.rank}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <h3 className="line-clamp-3 text-sm font-semibold leading-6 text-[#111827]" title={item.title}>
-              {item.title}
-            </h3>
-            {item.price ? (
-              <span className="shrink-0 text-lg font-bold tracking-tight text-[#ff0033]">
-                {item.price}
-              </span>
-            ) : null}
-          </div>
+      {linkedImage ? (
+        <a
+          aria-label={`${item.actionLabel}: ${item.title}`}
+          className="group relative aspect-square self-start overflow-hidden rounded-xl bg-[#f5f6f7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
+          href={item.actionUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <img
+            alt=""
+            className={`absolute inset-0 h-full w-full transition duration-200 group-hover:scale-[1.02] group-focus-visible:scale-[1.02] ${scenario === "shopping" ? "object-contain p-2" : "object-cover"}`}
+            decoding="async"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            src={item.imageUrl}
+          />
+          <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/55 px-2 text-center text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+            <ExternalLink aria-hidden="true" size={18} />
+            <span className="text-xs font-semibold leading-4">{item.actionLabel}</span>
+          </span>
+        </a>
+      ) : item.imageUrl ? (
+        <div className="relative aspect-square self-start overflow-hidden rounded-xl bg-[#f5f6f7]">
+          <img
+            alt={item.title}
+            className={`absolute inset-0 h-full w-full ${scenario === "shopping" ? "object-contain p-2" : "object-cover"}`}
+            decoding="async"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            src={item.imageUrl}
+          />
+        </div>
+      ) : null}
 
-          <p className="mt-1 text-sm leading-6 text-[#6b7280]">{item.meta}</p>
-
-          <div className="mt-2 flex flex-wrap items-start gap-2">
-            <span className="rounded-full bg-[#fff4d6] px-2.5 py-1 text-xs font-semibold text-[#7c5200]">
-              {item.score}
+      <div className="min-w-0 py-0.5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <h3 className="line-clamp-3 text-sm font-semibold leading-6 text-[#111827]" title={item.title}>
+            {item.title}
+          </h3>
+          {item.price ? (
+            <span className="shrink-0 text-lg font-bold tracking-tight text-[#ff0033]">
+              {item.price}
             </span>
-            {item.reason ? (
-              <p className="min-w-[180px] flex-1 text-sm leading-6 text-[#4b5563]">{item.reason}</p>
-            ) : null}
-          </div>
-
-          {item.actionUrl ? (
-            <a
-              className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-[#d1d5db] bg-white px-3 text-sm font-semibold text-[#111827] transition hover:border-[#ff0033] hover:text-[#d6002b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
-              href={item.actionUrl}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {item.actionLabel}
-              <ExternalLink aria-hidden="true" size={14} />
-            </a>
           ) : null}
         </div>
+
+        <p className="mt-1 text-sm leading-5 text-[#6b7280]">{item.meta}</p>
+
+        <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#8a5a00]">
+          <Star aria-hidden="true" className="fill-current" size={13} />
+          <span>{item.score}</span>
+        </div>
+
+        {item.reason ? (
+          <p className="mt-2 line-clamp-2 text-sm leading-5 text-[#4b5563]">{item.reason}</p>
+        ) : null}
+
+        {item.actionUrl && !linkedImage ? (
+          <a
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-[#d6002b] transition hover:text-[#a80022] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
+            href={item.actionUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {item.actionLabel}
+            <ExternalLink aria-hidden="true" size={13} />
+          </a>
+        ) : null}
       </div>
     </article>
   );

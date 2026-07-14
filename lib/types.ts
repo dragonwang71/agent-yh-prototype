@@ -44,6 +44,7 @@ export type Recommendation = {
   rank: number;
   title: string;
   meta: string;
+  imageUrl?: string;
   price?: string;
   score: string;
   reason: string;
