@@ -74,6 +74,9 @@ type YahooShoppingItem = {
   image?: {
     medium?: string;
   };
+  exImage?: {
+    url?: string;
+  };
 };
 
 type YahooShoppingResponse = {
@@ -119,6 +122,7 @@ type YahooLocalStation = {
 type YahooLocalProperty = {
   Address?: string;
   Genre?: YahooLocalGenre | YahooLocalGenre[];
+  LeadImage?: string;
   Station?: YahooLocalStation | YahooLocalStation[];
   PcUrl1?: string;
   ReviewUrl?: string;
@@ -702,6 +706,7 @@ async function createLiveShoppingRun(
   const started = performance.now();
   const params = new URLSearchParams({
     appid: clientId,
+    image_size: "300",
     query,
     results: "10"
   });
@@ -732,6 +737,7 @@ async function createLiveShoppingRun(
     rank: index + 1,
     title: item.name ?? `${query} 候補 ${index + 1}`,
     meta: copy.shoppingMeta(item.seller?.name),
+    imageUrl: item.exImage?.url ?? item.image?.medium,
     price: typeof item.price === "number" ? `¥${item.price.toLocaleString("ja-JP")}` : undefined,
     score: copy.reviewScore(item.review?.rate, item.review?.count),
     reason: copy.shoppingReason(priceMax, Boolean(priceMax && item.price && item.price <= priceMax)),
@@ -932,6 +938,7 @@ async function createLiveOutingRun(
         lat,
         lon,
         dist: "2",
+        image: "true",
         sort: "geo",
         results: "6",
         detail: "standard",
@@ -1330,6 +1337,7 @@ function createLocalPlaceRecommendation({
     rank: index + 1,
     title: name,
     meta: formatLocalMeta(feature, language),
+    imageUrl: feature.Property?.LeadImage,
     score: formatLocalScore(feature, localQuery, language),
     reason: formatLocalReason({
       language,
