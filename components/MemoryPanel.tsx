@@ -47,10 +47,10 @@ export function MemoryPanel({ memory, onRefresh, onSave, text }: MemoryPanelProp
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f7f4ee] px-5 py-6">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white px-5 py-6">
       <div className="mx-auto flex w-full max-w-[780px] shrink-0 justify-end gap-2">
         <button
-          className="rounded-full bg-[#ebe7df] px-4 py-2 text-base font-medium text-[#24211c] outline-none transition hover:bg-[#e2ddd4] disabled:text-[#9a9183] focus-visible:bg-[#e2ddd4]"
+          className="rounded-full bg-[#f3f4f6] px-4 py-2 text-base font-medium text-[#111827] outline-none transition hover:bg-[#e5e7eb] disabled:text-[#9ca3af] focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
           disabled={isRefreshing}
           onClick={refreshMemory}
           type="button"
@@ -58,7 +58,7 @@ export function MemoryPanel({ memory, onRefresh, onSave, text }: MemoryPanelProp
           {isRefreshing ? text.updating : refreshFailed ? text.updateFailed : text.update}
         </button>
         <button
-          className="rounded-full bg-[#ebe7df] px-4 py-2 text-base font-medium text-[#24211c] outline-none transition hover:bg-[#e2ddd4] focus-visible:bg-[#e2ddd4]"
+          className="rounded-full bg-[#f3f4f6] px-4 py-2 text-base font-medium text-[#111827] outline-none transition hover:bg-[#e5e7eb] focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
           onClick={() => setIsEditing((current) => !current)}
           type="button"
         >
@@ -69,12 +69,13 @@ export function MemoryPanel({ memory, onRefresh, onSave, text }: MemoryPanelProp
       <div className="mx-auto mt-5 min-h-0 w-full max-w-[780px] flex-1 overflow-y-auto">
         {isEditing ? (
           <textarea
-            className="min-h-full w-full rounded-2xl border border-[#ded8cf] bg-[#fbfaf7] p-5 font-mono text-base leading-8 text-[#24211c] outline-none focus:border-[#c9bda9]"
+            aria-label={text.edit}
+            className="min-h-full w-full rounded-2xl border border-[#d1d5db] bg-white p-5 font-mono text-base leading-8 text-[#111827] outline-none focus:border-[#ff6685] focus:ring-2 focus:ring-[#ffe0e6]"
             onChange={(event) => updateMemory(event.target.value)}
             value={draft}
           />
         ) : (
-          <div className="min-h-full rounded-2xl bg-[#fbfaf7] p-6">
+          <div className="min-h-full rounded-2xl border border-[#e5e7eb] bg-[#fcfcfd] p-6">
             <MarkdownPreview markdown={draft} />
           </div>
         )}
@@ -85,7 +86,7 @@ export function MemoryPanel({ memory, onRefresh, onSave, text }: MemoryPanelProp
 
 function MarkdownPreview({ markdown }: { markdown: string }) {
   return (
-    <div className="space-y-3 text-base leading-8 text-[#24211c]">
+    <div className="space-y-3 text-base leading-8 text-[#111827]">
       {markdown.split("\n").map((line, index) => {
         const trimmed = line.trim();
 
@@ -112,7 +113,7 @@ function MarkdownPreview({ markdown }: { markdown: string }) {
         if (trimmed.startsWith("- ")) {
           return (
             <div className="grid grid-cols-[18px_1fr] gap-2" key={`${index}-${trimmed}`}>
-              <span className="text-[#7c7466]">-</span>
+              <span className="text-[#6b7280]">-</span>
               <p>{trimmed.slice(2)}</p>
             </div>
           );

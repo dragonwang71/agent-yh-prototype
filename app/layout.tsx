@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Agent yh Prototype",
-  description: "LINE/Yahoo public API based personal daily agent prototype"
+  title: "Agent yh | Everyday decision agent",
+  description:
+    "A source-grounded everyday agent for shopping and weather-aware local recommendations."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

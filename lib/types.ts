@@ -6,6 +6,8 @@ export type StepStatus = "done" | "running" | "waiting";
 
 export type ToolStatus = "success" | "waiting" | "error";
 
+export type AgentFeedback = "helpful" | "needs-improvement";
+
 export type TaskOption = {
   id: ScenarioId;
   title: string;
@@ -76,6 +78,7 @@ export type AgentRun = {
   recommendations: Recommendation[];
   approvals: ApprovalEvent[];
   memoryUpdates: MemoryUpdate[];
+  feedback?: AgentFeedback;
 };
 
 export type ChatMessage =

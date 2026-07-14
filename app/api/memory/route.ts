@@ -16,7 +16,10 @@ type OpenAIChatResponse = {
   }>;
 };
 
-const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const model = process.env.OPENAI_MODEL ?? "gpt-5.6-terra";
+const openaiTimeoutMs = 15_000;
+const maxMemoryLength = 12_000;
+const maxMessages = 30;
 
 export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -28,10 +31,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as MemoryRequest;
+  const body = (await request.json().catch(() => null)) as MemoryRequest | null;
+
+  if (!body || typeof body.memory !== "string" || !Array.isArray(body.messages)) {
+    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const currentMemory = body.memory.slice(0, maxMemoryLength);
   const transcript = body.messages
+    .slice(-maxMessages)
     .filter((message) => message.content.trim())
-    .map((message) => `${message.role}: ${message.content}`)
+    .map((message) => `${message.role}: ${message.content.slice(0, 2_000)}`)
     .join("\n");
 
   const prompt = `You update the long-term user memory for Agent yh.
@@ -63,7 +73,7 @@ Do not store:
 Keep it concise and useful for a normal consumer assistant. Return Japanese Markdown only.
 
 Current memory:
-${body.memory || "(empty)"}
+${currentMemory || "(empty)"}
 
 Recent conversation:
 ${transcript || "(empty)"}`;
@@ -87,7 +97,8 @@ ${transcript || "(empty)"}`;
           content: prompt
         }
       ]
-    })
+    }),
+    signal: AbortSignal.timeout(openaiTimeoutMs)
   });
 
   if (!response.ok) {

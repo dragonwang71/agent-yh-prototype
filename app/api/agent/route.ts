@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
+import {
+  chooseLocalSearchQuery,
+  extractPlace,
+  extractPriceMax,
+  extractPriorities,
+  extractShoppingQuery,
+  normalizeLocalSearchQuery
+} from "@/lib/agent/heuristics";
 import { inferScenario } from "@/lib/demoData";
+import type { UiLanguage } from "@/lib/i18n";
 import type { AgentRun, PlanStep, Recommendation, ScenarioId, ToolCall, UserMemory } from "@/lib/types";
 
 type AgentRequest = {
@@ -10,8 +19,6 @@ type AgentRequest = {
   memory?: UserMemory[];
   language?: UiLanguage;
 };
-
-type UiLanguage = "ja" | "en" | "zh";
 
 type AgentContext = {
   prompt: string;
@@ -134,7 +141,10 @@ type YahooLocalSearchResponse = {
 
 const yahooClientId = process.env.YAHOO_CLIENT_ID;
 const openaiApiKey = process.env.OPENAI_API_KEY;
-const openaiModel = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const openaiModel = process.env.OPENAI_MODEL ?? "gpt-5.6-terra";
+const yahooTimeoutMs = 8_000;
+const openaiTimeoutMs = 15_000;
+const maxPromptLength = 2_000;
 const agentText = {
   ja: {
     outputLanguage: "Japanese",
@@ -302,11 +312,22 @@ export async function POST(request: Request) {
 }
 
 function prepareAgentContext(body: AgentRequest): AgentContext {
-  const prompt = body.prompt?.trim() || "2万円以内で電子レンジを探して";
-  const scenario = body.scenario ?? inferScenario(prompt);
-  const startedAt = body.startedAt ?? "10:24:03";
-  const runId = body.runId ?? "api-run";
-  const memory = body.memory ?? [];
+  const prompt = (body.prompt?.trim() || "2万円以内で電子レンジを探して").slice(
+    0,
+    maxPromptLength
+  );
+  const scenario =
+    body.scenario === "shopping" || body.scenario === "outing"
+      ? body.scenario
+      : inferScenario(prompt);
+  const startedAt = body.startedAt?.slice(0, 24) ?? "10:24:03";
+  const runId = body.runId?.slice(0, 120) ?? "api-run";
+  const memory = Array.isArray(body.memory)
+    ? body.memory
+        .filter((item) => item && typeof item.text === "string")
+        .slice(0, 10)
+        .map((item) => ({ ...item, text: item.text.slice(0, 2_000) }))
+    : [];
   const language = normalizeLanguage(body.language);
 
   return {
@@ -691,7 +712,7 @@ async function createLiveShoppingRun(
 
   const response = await fetch(
     `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?${params.toString()}`,
-    { headers: { Accept: "application/json" } }
+    { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(yahooTimeoutMs) }
   );
   const latency = `${Math.round(performance.now() - started)}ms`;
 
@@ -845,7 +866,7 @@ async function createLiveOutingRun(
   });
   const geocodeResponse = await fetch(
     `https://map.yahooapis.jp/geocode/V1/geoCoder?${geocodeParams.toString()}`,
-    { headers: { Accept: "application/json" } }
+    { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(yahooTimeoutMs) }
   );
   const geocodeLatency = `${Math.round(performance.now() - geocodeStarted)}ms`;
 
@@ -875,7 +896,7 @@ async function createLiveOutingRun(
   });
   const weatherResponse = await fetch(
     `https://map.yahooapis.jp/weather/V1/place?${weatherParams.toString()}`,
-    { headers: { Accept: "application/json" } }
+    { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(yahooTimeoutMs) }
   );
   const weatherLatency = `${Math.round(performance.now() - weatherStarted)}ms`;
 
@@ -918,7 +939,7 @@ async function createLiveOutingRun(
       });
       const localResponse = await fetch(
         `https://map.yahooapis.jp/search/local/V1/localSearch?${localParams.toString()}`,
-        { headers: { Accept: "application/json" } }
+        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(yahooTimeoutMs) }
       );
 
       localLatency = `${Math.round(performance.now() - localStarted)}ms`;
@@ -1209,17 +1230,6 @@ async function chooseLocalSearchQueryWithModel({
   }
 }
 
-function normalizeLocalSearchQuery(query: string | undefined, maxRainfall: number) {
-  const allowed = ["カフェ", "公園", "美術館", "レストラン"];
-  const normalized = query?.trim();
-
-  if (maxRainfall > 0 && normalized === "公園") {
-    return undefined;
-  }
-
-  return allowed.find((item) => item === normalized);
-}
-
 function formatFallbackLocalSearchDecision(
   query: string,
   maxRainfall: number,
@@ -1243,46 +1253,6 @@ function formatFallbackLocalSearchDecision(
   return maxRainfall > 0
     ? `最大降水${rain} mm/hのため、屋内寄りの「${queryLabel}」を選択。`
     : `最大降水${rain} mm/hのため、歩きやすい「${queryLabel}」を選択。`;
-}
-
-function chooseLocalSearchQuery(prompt: string, maxRainfall: number) {
-  const normalizedPrompt = prompt.toLowerCase();
-
-  if (
-    prompt.includes("美術館") ||
-    prompt.includes("博物館") ||
-    prompt.includes("展覧") ||
-    prompt.includes("展览") ||
-    normalizedPrompt.includes("museum") ||
-    normalizedPrompt.includes("gallery")
-  ) {
-    return "美術館";
-  }
-
-  if (
-    prompt.includes("カフェ") ||
-    prompt.includes("喫茶") ||
-    prompt.includes("咖啡") ||
-    normalizedPrompt.includes("cafe") ||
-    normalizedPrompt.includes("coffee")
-  ) {
-    return "カフェ";
-  }
-
-  if (
-    prompt.includes("レストラン") ||
-    prompt.includes("食事") ||
-    prompt.includes("餐厅") ||
-    normalizedPrompt.includes("restaurant")
-  ) {
-    return "レストラン";
-  }
-
-  if (maxRainfall > 0) {
-    return "カフェ";
-  }
-
-  return "公園";
 }
 
 function createGroundedOutingResult({
@@ -1647,7 +1617,8 @@ async function callOpenAIJson(messages: Array<{ role: "system" | "user"; content
       model: openaiModel,
       messages,
       response_format: { type: "json_object" }
-    })
+    }),
+    signal: AbortSignal.timeout(openaiTimeoutMs)
   });
 
   if (!response.ok) {
@@ -1664,78 +1635,6 @@ async function callOpenAIJson(messages: Array<{ role: "system" | "user"; content
   return content;
 }
 
-function extractShoppingQuery(prompt: string) {
-  const normalizedPrompt = prompt.toLowerCase();
-
-  if (prompt.includes("電子レンジ") || prompt.includes("微波炉") || normalizedPrompt.includes("microwave")) {
-    return "電子レンジ";
-  }
-
-  if (prompt.includes("冷蔵庫") || prompt.includes("冰箱") || normalizedPrompt.includes("refrigerator")) {
-    return "冷蔵庫";
-  }
-
-  if (prompt.includes("洗濯機") || prompt.includes("洗衣机") || normalizedPrompt.includes("washing machine")) {
-    return "洗濯機";
-  }
-
-  return "家電";
-}
-
-function extractPriceMax(prompt: string) {
-  const normalizedPrompt = prompt.replace(/,/g, "");
-  const manYenMatch = normalizedPrompt.match(/(\d+)\s*万(?:円|日元)?/);
-
-  if (manYenMatch?.[1]) {
-    return Number(manYenMatch[1]) * 10000;
-  }
-
-  const yenMatch = normalizedPrompt.match(/(\d{4,6})\s*(?:円|日元|yen)/i);
-
-  if (yenMatch?.[1]) {
-    return Number(yenMatch[1]);
-  }
-
-  return undefined;
-}
-
-function extractPlace(prompt: string) {
-  const normalizedPrompt = prompt.toLowerCase();
-  const knownPlaces: Array<[string, string[]]> = [
-    ["渋谷", ["渋谷", "涩谷", "shibuya"]],
-    ["新宿", ["新宿", "shinjuku"]],
-    ["池袋", ["池袋", "ikebukuro"]],
-    ["東京駅", ["東京駅", "东京站", "tokyo station"]],
-    ["横浜", ["横浜", "横滨", "yokohama"]],
-    ["大阪", ["大阪", "osaka"]],
-    ["京都", ["京都", "kyoto"]]
-  ];
-  return knownPlaces.find(([, aliases]) => aliases.some((place) => normalizedPrompt.includes(place.toLowerCase())))?.[0] ?? "渋谷";
-}
-
 function createYahooMapUrl(place: string) {
   return `https://map.yahoo.co.jp/search?q=${encodeURIComponent(place)}`;
-}
-
-function extractPriorities(prompt: string, memory: UserMemory[]) {
-  const normalizedPrompt = prompt.toLowerCase();
-  const priorities = new Set<string>();
-
-  if (prompt.includes("レビュー") || prompt.includes("评价") || normalizedPrompt.includes("review")) {
-    priorities.add("レビュー重視");
-  }
-
-  if (prompt.includes("省スペース") || prompt.includes("省空间") || normalizedPrompt.includes("compact")) {
-    priorities.add("省スペース");
-  }
-
-  if (prompt.includes("雨") || prompt.includes("下雨") || normalizedPrompt.includes("rain")) {
-    priorities.add("雨天時は屋内");
-  }
-
-  for (const item of memory.slice(0, 3)) {
-    priorities.add(item.text);
-  }
-
-  return [...priorities].slice(0, 5);
 }
