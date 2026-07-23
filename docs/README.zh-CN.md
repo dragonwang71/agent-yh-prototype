@@ -2,50 +2,63 @@
 
 [日本語](../README.md) | [English](README.en.md)
 
-Agent yh 是一个面向日常购物和外出决策的 source-grounded AI agent。它从自然语言中整理条件，通过 Yahoo! JAPAN 的购物、地图和天气 API 获取实时数据，再给出便于比较和执行的候选方案。
+Agent yh 是一个以评测驱动、基于来源证据的日常决策 AI Agent。模型负责理解语言和歧义，程序负责约束、排序、证据、权限与失败边界。
 
 ## 在线体验
 
 **[在浏览器中试用 Agent yh →](https://agent-yh-prototype.vercel.app)**
 
-[![Agent yh walkthrough](assets/agent-yh-preview.gif)](assets/agent-yh-walkthrough.mp4)
+[![Agent yh v2 演示](assets/agent-yh-preview.gif)](assets/agent-yh-walkthrough.mp4)
 
-[打开演示视频](assets/agent-yh-walkthrough.mp4)
+[观看 23 秒 MP4 演示](assets/agent-yh-walkthrough.mp4)
+
+## 质量快照
+
+2026 年 7 月 23 日实测：
+
+| 评测 | 结果 |
+|---|---:|
+| 确定性评测 | 120 条 |
+| 意图 / 字段完全匹配 | 100% / 100% |
+| 无来源事实比例 | 0% |
+| 模型评测（`gpt-5.6-terra`） | 20 / 20，全部实际调用模型 |
+| Yahoo 实时探针 | 购物 452ms / 地理编码 231ms |
+
+方法和边界见 [benchmark](benchmark.md) 与 [evaluation](evaluation.md)。
 
 ## 使用体验
 
-- 先给结论，再用卡片呈现可比较的候选项
-- 价格、评价、店铺、地点和天气只使用 API 返回字段
-- 商品页和地图使用带文字的明确操作
-- 将判断过程、工具和耗时放入独立执行日志
-- 每次回答都可以记录“有帮助 / 需要改进”
-- 以日语为默认语言，同时支持英语和中文
+- 缺少商品或地点时先追问，不再使用虚假默认值
+- 硬约束过滤与可解释的确定性排序
+- 用户可见事实和操作链接均关联字段级证据
+- 结构化记忆只有在用户明确确认后才会保存
+- 主界面保持简洁，证据与开发轨迹按需展开
+- 默认日语，同时支持英语和中文
 
 ## Agent 工作流程
 
 ```mermaid
 flowchart LR
-  Request["自然语言请求"] --> Intent["意图判断"]
-  Intent --> OpenAI["OpenAI 决策层"]
-  Intent --> Yahoo["Yahoo! JAPAN API"]
-  Yahoo --> Format["基于来源的格式化"]
-  Format --> Contract["运行时契约"]
-  Contract --> UI["回答 + 执行日志"]
-  UI --> Feedback["用户反馈"]
-  Feedback --> Harness["评测用例"]
+  Request["自然语言请求"] --> Intent["严格意图"]
+  Intent --> Context{"信息是否足够"}
+  Context --> Clarify["追问"]
+  Context --> Yahoo["类型化 Yahoo 工具"]
+  Yahoo --> Rank["确定性排序"]
+  Rank --> Evidence["证据校验"]
+  Evidence --> UI["回答与行动"]
+  UI --> Memory["确认后的记忆"]
 ```
 
 ## 工程特性
 
 | 领域 | 实现 |
 | --- | --- |
-| 数据可信度 | 用户可见事实只来自外部 API 返回字段 |
-| 降级策略 | 模型调用失败时使用确定性规则维持核心路由 |
-| 运行时契约 | 在 UI 边界拒绝不完整的流式事件 |
-| 可靠性 | 外部请求超时、请求取消和输入长度限制 |
-| 性能 | 进度流式返回、存储防抖、历史数量上限 |
-| AI harness | 多语言路由、条件抽取、雨天保护和响应契约评测 |
-| 交付 | TypeScript、Vitest、生产构建和 GitHub Actions |
+| 结构化模型 | Responses API、Zod、Strict Structured Outputs、`store: false` |
+| Agent 编排 | 有界单 Agent 状态机与差量流式事件 |
+| 推荐质量 | 硬过滤、评价置信度、距离与字段级证据 |
+| 可靠性 | 取消传播、类型化重试、总时限与降级状态 |
+| 隐私 | 本地优先记忆与不记录原始提示词的匿名事件 |
+| 评测 | 120 条案例、模型样本、实时探针、桌面/移动端 E2E |
 
 架构、评测基座、反馈闭环、质量门槛和运维说明见 [Engineering guide](engineering/README.md)。
 
@@ -68,10 +81,16 @@ OPENAI_MODEL=gpt-5.6-terra
 
 ```bash
 npm run harness
+npm run eval:deterministic
+npm run eval:model -- --limit=20
+npm run eval:live
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 npm run check
 ```
 
-GitHub Actions 会在 pull request 和推送到 `main` 时执行类型检查、测试和生产构建。
+GitHub Actions 会执行类型检查、单元/评测、Chromium E2E 和生产构建。
+
+延伸阅读：[架构](architecture-v2.md)、[隐私](privacy.md)、[限制](limitations.md) 与 [威胁模型](agent-yh-threat-model.md)。

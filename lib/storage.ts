@@ -1,11 +1,12 @@
 "use client";
 
 import { defaultMemory } from "@/lib/demoData";
+import { agentRunSchema, memoryItemSchema } from "@/lib/agent/schemas";
 import type { UiLanguage } from "@/lib/i18n";
-import type { Conversation } from "@/lib/types";
+import type { Conversation, MemoryItem } from "@/lib/types";
 
 const conversationsKey = "agent-yh-conversations";
-const memoryKey = "agent-yh-memory";
+const memoryKey = "agent-yh-memory-v2";
 const languageKey = "agent-yh-language";
 const languageDefaultVersionKey = "agent-yh-language-default-version";
 const currentLanguageDefaultVersion = "ja-default-2026-06";
@@ -61,6 +62,8 @@ function isConversation(value: unknown): value is Conversation {
     typeof candidate.title === "string" &&
     Array.isArray(candidate.messages) &&
     typeof candidate.runs === "object" &&
+    candidate.runs !== null &&
+    Object.values(candidate.runs).every((run) => agentRunSchema.safeParse(run).success) &&
     typeof candidate.activeRunId === "string" &&
     typeof candidate.updatedAt === "string"
   );
@@ -109,21 +112,31 @@ export function saveConversations(conversations: Conversation[]) {
   );
 }
 
-export function loadMemory() {
+export function loadMemory(): MemoryItem[] {
   if (typeof window === "undefined") {
     return defaultMemory;
   }
 
   try {
     const stored = window.localStorage.getItem(memoryKey);
-    return stored?.trim() ? stored : defaultMemory;
+    const parsed: unknown = stored ? JSON.parse(stored) : [];
+
+    if (!Array.isArray(parsed)) {
+      return defaultMemory;
+    }
+
+    return parsed
+      .map((item) => memoryItemSchema.safeParse(item))
+      .filter((result) => result.success)
+      .map((result) => result.data)
+      .slice(0, 100);
   } catch {
     return defaultMemory;
   }
 }
 
-export function saveMemory(memory: string) {
-  window.localStorage.setItem(memoryKey, memory);
+export function saveMemory(memory: MemoryItem[]) {
+  window.localStorage.setItem(memoryKey, JSON.stringify(memory.slice(0, 100)));
 }
 
 export function loadLanguage(): UiLanguage {

@@ -9,12 +9,14 @@ npm run check
 このコマンドは次を順に実行します。
 
 1. TypeScript の strict typecheck
-2. agent harness と contract tests
+2. agent harness、contract tests、120-case deterministic eval
 3. Next.js production build
+
+ブラウザの主要フローは `npm run test:e2e` で desktop / mobile の Chromium を確認します。
 
 ## CI
 
-GitHub Actions は main への push と pull request で同じ検査を行います。新しい commit が入ると古い実行を中止し、10分で timeout します。
+GitHub Actions は main への push と pull request で typecheck、unit/eval、Chromium E2E、production build を実行します。新しい commit が入ると古い実行を中止し、10分で timeout します。
 
 ## UI 変更
 

@@ -1,4 +1,4 @@
-import type { UserMemory } from "@/lib/types";
+import type { MemoryItem } from "@/lib/types";
 
 export function extractShoppingQuery(prompt: string) {
   const normalizedPrompt = prompt.toLowerCase();
@@ -15,7 +15,7 @@ export function extractShoppingQuery(prompt: string) {
     return "洗濯機";
   }
 
-  return "家電";
+  return undefined;
 }
 
 export function extractPriceMax(prompt: string) {
@@ -49,10 +49,10 @@ export function extractPlace(prompt: string) {
 
   return knownPlaces.find(([, aliases]) =>
     aliases.some((place) => normalizedPrompt.includes(place.toLowerCase()))
-  )?.[0] ?? "渋谷";
+  )?.[0];
 }
 
-export function extractPriorities(prompt: string, memory: UserMemory[]) {
+export function extractPriorities(prompt: string, memory: MemoryItem[]) {
   const normalizedPrompt = prompt.toLowerCase();
   const priorities = new Set<string>();
 
@@ -68,11 +68,85 @@ export function extractPriorities(prompt: string, memory: UserMemory[]) {
     priorities.add("雨天時は屋内");
   }
 
-  for (const item of memory.slice(0, 3)) {
-    priorities.add(item.text);
+  for (const item of memory.filter((entry) => entry.status === "approved").slice(0, 3)) {
+    const value = Array.isArray(item.value) ? item.value.join(", ") : String(item.value);
+    priorities.add(`${item.key}: ${value}`);
   }
 
   return [...priorities].slice(0, 5);
+}
+
+export function inferScenarioHint(prompt: string) {
+  const normalizedPrompt = prompt.toLowerCase();
+  const outingSignals = [
+    "雨",
+    "晴れ",
+    "天気",
+    "散歩",
+    "おでかけ",
+    "会う",
+    "weather",
+    "rain",
+    "sunny",
+    "walk",
+    "meet",
+    "天气",
+    "下雨",
+    "晴天",
+    "散步",
+    "见面"
+  ];
+  const shoppingSignals = [
+    "探して",
+    "買い",
+    "商品",
+    "予算",
+    "レビュー",
+    "find",
+    "buy",
+    "product",
+    "budget",
+    "review",
+    "想找",
+    "购买",
+    "商品",
+    "预算",
+    "评价"
+  ];
+
+  if (outingSignals.some((signal) => normalizedPrompt.includes(signal))) {
+    return "outing" as const;
+  }
+
+  if (shoppingSignals.some((signal) => normalizedPrompt.includes(signal))) {
+    return "shopping" as const;
+  }
+
+  return null;
+}
+
+export function extractRequestedAt(prompt: string) {
+  const normalizedPrompt = prompt.toLowerCase();
+  const relativeTokens = [
+    "今日",
+    "明日",
+    "今週",
+    "週末",
+    "土曜日",
+    "日曜日",
+    "today",
+    "tomorrow",
+    "weekend",
+    "saturday",
+    "sunday",
+    "今天",
+    "明天",
+    "周末",
+    "周六",
+    "周日"
+  ];
+
+  return relativeTokens.find((token) => normalizedPrompt.includes(token.toLowerCase())) ?? null;
 }
 
 export function chooseLocalSearchQuery(prompt: string, maxRainfall: number) {
