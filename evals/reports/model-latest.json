@@ -1,0 +1,332 @@
+{
+  "generatedAt": "2026-07-23T04:49:01.900Z",
+  "model": "gpt-5.6-terra",
+  "cases": 20,
+  "taskOutcomeAccuracy": 1,
+  "modelUsageRate": 1,
+  "modelBackedOutcomeAccuracy": 1,
+  "correctedByRules": 6,
+  "recoveredByFallback": 0,
+  "results": [
+    {
+      "id": "shopping-1-1",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_05535ee020683736016a619d226a988198adf335f5839cd1e3",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 617,
+        "outputTokens": 79,
+        "cachedTokens": 0,
+        "latencyMs": 1864
+      }
+    },
+    {
+      "id": "outing-1",
+      "expectedKind": "outing",
+      "actualKind": "outing",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_08a88491d9c357cf016a619d23f8308199b51cf38ca1a08a18",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 624,
+        "outputTokens": 90,
+        "cachedTokens": 0,
+        "latencyMs": 1342
+      }
+    },
+    {
+      "id": "multilingual-1",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": true,
+      "usage": {
+        "responseId": "resp_0740229c5d35d0ea016a619d254dbc819a9871923ce05626b3",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 612,
+        "outputTokens": 66,
+        "cachedTokens": 0,
+        "latencyMs": 1362
+      }
+    },
+    {
+      "id": "clarification-1",
+      "expectedKind": "needs_clarification",
+      "actualKind": "needs_clarification",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_0325e153e8fca11e016a619d26b92c8199bec8a675a5635f74",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 614,
+        "outputTokens": 56,
+        "cachedTokens": 0,
+        "latencyMs": 1374
+      }
+    },
+    {
+      "id": "upstream-failure-1",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_00fc365bb20f179e016a619d280e3c8199bdda9ed00390c958",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 613,
+        "outputTokens": 71,
+        "cachedTokens": 0,
+        "latencyMs": 1410
+      }
+    },
+    {
+      "id": "adversarial-1",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_0c7b325929d44415016a619d296f84819a88ff79a6d5be109c",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 628,
+        "outputTokens": 68,
+        "cachedTokens": 0,
+        "latencyMs": 1367
+      }
+    },
+    {
+      "id": "memory-conflict-1",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_026eeb5638c2d8a7016a619d2aea70819a9d83247f4b92a06f",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 614,
+        "outputTokens": 69,
+        "cachedTokens": 0,
+        "latencyMs": 1781
+      }
+    },
+    {
+      "id": "shopping-1-2",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": true,
+      "usage": {
+        "responseId": "resp_0f3cbb672c71df02016a619d2c9b54819bb8bc03ae45dc0cb5",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 612,
+        "outputTokens": 69,
+        "cachedTokens": 0,
+        "latencyMs": 1449
+      }
+    },
+    {
+      "id": "outing-2",
+      "expectedKind": "outing",
+      "actualKind": "outing",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": true,
+      "usage": {
+        "responseId": "resp_073d9cc7d53ac2e6016a619d2e090c819ba923d9808d3d39e1",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 622,
+        "outputTokens": 81,
+        "cachedTokens": 0,
+        "latencyMs": 1395
+      }
+    },
+    {
+      "id": "multilingual-2",
+      "expectedKind": "outing",
+      "actualKind": "outing",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": true,
+      "usage": {
+        "responseId": "resp_031ea0a4f68e4083016a619d2f6e44819a832de12f20917616",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 614,
+        "outputTokens": 75,
+        "cachedTokens": 0,
+        "latencyMs": 1355
+      }
+    },
+    {
+      "id": "clarification-2",
+      "expectedKind": "needs_clarification",
+      "actualKind": "needs_clarification",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_029f6c92b01e9a21016a619d30cc1081988065ba291c2166ad",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 607,
+        "outputTokens": 59,
+        "cachedTokens": 0,
+        "latencyMs": 1148
+      }
+    },
+    {
+      "id": "upstream-failure-2",
+      "expectedKind": "outing",
+      "actualKind": "outing",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_0e70b1ebb1a51009016a619d31f04c8198bcc05672c39684d2",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 616,
+        "outputTokens": 88,
+        "cachedTokens": 0,
+        "latencyMs": 1510
+      }
+    },
+    {
+      "id": "adversarial-2",
+      "expectedKind": "outing",
+      "actualKind": "outing",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_0811bc73ccb2dff3016a619d337f3c819baf546968e49fbcd2",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 628,
+        "outputTokens": 73,
+        "cachedTokens": 0,
+        "latencyMs": 1412
+      }
+    },
+    {
+      "id": "memory-conflict-2",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_0542e26581993cb8016a619d34defc819b803962abdcde6a94",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 614,
+        "outputTokens": 66,
+        "cachedTokens": 0,
+        "latencyMs": 1348
+      }
+    },
+    {
+      "id": "shopping-1-3",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": true,
+      "usage": {
+        "responseId": "resp_04fc3dcdbf35fea5016a619d36372c8199bc9bd1ed165272df",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 618,
+        "outputTokens": 69,
+        "cachedTokens": 0,
+        "latencyMs": 1340
+      }
+    },
+    {
+      "id": "outing-3",
+      "expectedKind": "outing",
+      "actualKind": "outing",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_0e7922c30680196c016a619d378bd0819baa5d310278bf6af9",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 622,
+        "outputTokens": 93,
+        "cachedTokens": 0,
+        "latencyMs": 1400
+      }
+    },
+    {
+      "id": "multilingual-3",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": true,
+      "usage": {
+        "responseId": "resp_0767874fa734b486016a619d38f458819a8a2a0ffec6670d52",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 617,
+        "outputTokens": 62,
+        "cachedTokens": 0,
+        "latencyMs": 1307
+      }
+    },
+    {
+      "id": "clarification-3",
+      "expectedKind": "needs_clarification",
+      "actualKind": "needs_clarification",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_03ad0f6fa84fc5a3016a619d3a4298819b98090a56663f706e",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 615,
+        "outputTokens": 61,
+        "cachedTokens": 0,
+        "latencyMs": 1287
+      }
+    },
+    {
+      "id": "upstream-failure-3",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_0961c56008a3286f016a619d3b91a08199aab306f122b6a339",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 613,
+        "outputTokens": 66,
+        "cachedTokens": 0,
+        "latencyMs": 1441
+      }
+    },
+    {
+      "id": "adversarial-3",
+      "expectedKind": "shopping",
+      "actualKind": "shopping",
+      "correct": true,
+      "usedModel": true,
+      "correctedByRules": false,
+      "usage": {
+        "responseId": "resp_080de2e454b6fe63016a619d3cfba48198bb9f3cc47ef189a9",
+        "model": "gpt-5.6-terra",
+        "inputTokens": 628,
+        "outputTokens": 65,
+        "cachedTokens": 0,
+        "latencyMs": 1119
+      }
+    }
+  ]
+}

@@ -9,6 +9,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["harness/**/*.test.ts"]
+    include: ["harness/**/*.test.ts", "evals/**/*.test.ts"]
   }
 });

@@ -1,5 +1,7 @@
 # Architecture
 
+> Current architecture: [Architecture v2](../architecture-v2.md). This document remains as the v1 baseline.
+
 ## 方針
 
 Agent yh は、モデルを判断レイヤーとして使い、商品・場所・天気の事実は Yahoo! JAPAN の公開 API から取得します。モデルが利用できない場合も、決定的な fallback で基本フローを継続します。

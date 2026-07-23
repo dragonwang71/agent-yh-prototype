@@ -1,82 +1,176 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-type MemoryPanelText = {
-  edit: string;
-  preview: string;
-  update: string;
-  updateFailed: string;
-  updating: string;
-};
+import { Download, Pencil, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import type { UiCopy } from "@/lib/i18n";
+import type { MemoryItem } from "@/lib/types";
 
 type MemoryPanelProps = {
-  memory: string;
-  onRefresh: (memory: string) => Promise<void>;
-  onSave: (memory: string) => void;
-  text: MemoryPanelText;
+  memory: MemoryItem[];
+  onChange: (memory: MemoryItem[]) => void;
+  text: UiCopy;
 };
 
-export function MemoryPanel({ memory, onRefresh, onSave, text }: MemoryPanelProps) {
-  const [draft, setDraft] = useState(memory);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshFailed, setRefreshFailed] = useState(false);
+export function MemoryPanel({ memory, onChange, text }: MemoryPanelProps) {
+  const [editingId, setEditingId] = useState("");
+  const approved = memory.filter((item) => item.status === "approved");
+  const grouped = useMemo(
+    () =>
+      approved.reduce<Partial<Record<MemoryItem["namespace"], MemoryItem[]>>>(
+        (groups, item) => {
+          groups[item.namespace] = [...(groups[item.namespace] ?? []), item];
+          return groups;
+        },
+        {}
+      ),
+    [approved]
+  );
 
-  useEffect(() => {
-    setDraft(memory);
-  }, [memory]);
-
-  function updateMemory(nextMemory: string) {
-    setDraft(nextMemory);
-    onSave(nextMemory);
-    setRefreshFailed(false);
+  function remove(id: string) {
+    onChange(memory.filter((item) => item.id !== id));
+    setEditingId("");
   }
 
-  async function refreshMemory() {
-    setIsRefreshing(true);
-    setRefreshFailed(false);
+  function update(id: string, value: string) {
+    const updatedAt = new Date().toISOString();
+    onChange(
+      memory.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              value: coerceEditedValue(value, item.value),
+              updatedAt
+            }
+          : item
+      )
+    );
+  }
 
-    try {
-      await onRefresh(draft);
-    } catch {
-      setRefreshFailed(true);
-    } finally {
-      setIsRefreshing(false);
-    }
+  function exportMemory() {
+    const blob = new Blob([JSON.stringify(approved, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "agent-yh-memory.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white px-5 py-6">
-      <div className="mx-auto flex w-full max-w-[780px] shrink-0 justify-end gap-2">
-        <button
-          className="rounded-full bg-[#f3f4f6] px-4 py-2 text-base font-medium text-[#111827] outline-none transition hover:bg-[#e5e7eb] disabled:text-[#9ca3af] focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
-          disabled={isRefreshing}
-          onClick={refreshMemory}
-          type="button"
-        >
-          {isRefreshing ? text.updating : refreshFailed ? text.updateFailed : text.update}
-        </button>
-        <button
-          className="rounded-full bg-[#f3f4f6] px-4 py-2 text-base font-medium text-[#111827] outline-none transition hover:bg-[#e5e7eb] focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
-          onClick={() => setIsEditing((current) => !current)}
-          type="button"
-        >
-          {isEditing ? text.preview : text.edit}
-        </button>
-      </div>
+    <section className="min-h-0 flex-1 overflow-y-auto bg-white px-5 py-7 sm:px-8">
+      <div className="mx-auto w-full max-w-[760px]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-[#111827]">{text.memory}</h1>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-[#6b7280]">{text.memoryIntro}</p>
+            <p className="mt-1 text-xs text-[#9ca3af]">{text.memoryLocalOnly}</p>
+          </div>
 
-      <div className="mx-auto mt-5 min-h-0 w-full max-w-[780px] flex-1 overflow-y-auto">
-        {isEditing ? (
-          <textarea
-            aria-label={text.edit}
-            className="min-h-full w-full rounded-2xl border border-[#d1d5db] bg-white p-5 font-mono text-base leading-8 text-[#111827] outline-none focus:border-[#ff6685] focus:ring-2 focus:ring-[#ffe0e6]"
-            onChange={(event) => updateMemory(event.target.value)}
-            value={draft}
-          />
+          {approved.length ? (
+            <div className="flex items-center gap-1">
+              <button
+                className="inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-[#4b5563] transition hover:bg-[#f3f4f6] hover:text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
+                onClick={exportMemory}
+                type="button"
+              >
+                <Download aria-hidden="true" size={15} />
+                {text.exportMemory}
+              </button>
+              <button
+                className="min-h-9 rounded-lg px-3 text-sm font-medium text-[#b42318] transition hover:bg-[#fff0f3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
+                onClick={() => onChange([])}
+                type="button"
+              >
+                {text.clearMemory}
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {approved.length ? (
+          <div className="mt-9 space-y-8">
+            {(Object.entries(grouped) as Array<[MemoryItem["namespace"], MemoryItem[]]>).map(
+              ([namespace, items]) => (
+                <section key={namespace}>
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-[#6b7280]">
+                    {text.memoryNamespaces[namespace]}
+                  </h2>
+                  <div className="mt-2 overflow-hidden rounded-2xl bg-[#f7f7f8]">
+                    {items.map((item, index) => {
+                      const isEditing = editingId === item.id;
+
+                      return (
+                        <div
+                          className={`px-4 py-4 sm:px-5 ${
+                            index ? "border-t border-white" : ""
+                          }`}
+                          key={item.id}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-[#374151]">
+                                {formatKey(item.key)}
+                              </p>
+                              {isEditing ? (
+                                <input
+                                  aria-label={`${text.edit}: ${item.key}`}
+                                  autoFocus
+                                  className="mt-2 w-full rounded-lg bg-white px-3 py-2 text-sm text-[#111827] outline-none ring-1 ring-[#d1d5db] focus:ring-2 focus:ring-[#ff99ad]"
+                                  defaultValue={formatValue(item.value)}
+                                  onBlur={(event) => {
+                                    update(item.id, event.currentTarget.value);
+                                    setEditingId("");
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.currentTarget.blur();
+                                    }
+                                    if (event.key === "Escape") {
+                                      setEditingId("");
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <p className="mt-1 break-words text-base leading-6 text-[#111827]">
+                                  {formatValue(item.value)}
+                                </p>
+                              )}
+                              <p className="mt-2 text-xs text-[#9ca3af]">
+                                {new Date(item.updatedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                aria-label={`${text.edit}: ${item.key}`}
+                                className="flex h-9 w-9 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-white hover:text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
+                                onClick={() => setEditingId(item.id)}
+                                type="button"
+                              >
+                                <Pencil aria-hidden="true" size={15} />
+                              </button>
+                              <button
+                                aria-label={`${text.deleteMemory}: ${item.key}`}
+                                className="flex h-9 w-9 items-center justify-center rounded-lg text-[#9ca3af] transition hover:bg-[#fff0f3] hover:text-[#b42318] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
+                                onClick={() => remove(item.id)}
+                                type="button"
+                              >
+                                <Trash2 aria-hidden="true" size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )
+            )}
+          </div>
         ) : (
-          <div className="min-h-full rounded-2xl border border-[#e5e7eb] bg-[#fcfcfd] p-6">
-            <MarkdownPreview markdown={draft} />
+          <div className="mt-16 text-center">
+            <p className="text-base text-[#6b7280]">{text.memoryEmpty}</p>
           </div>
         )}
       </div>
@@ -84,43 +178,34 @@ export function MemoryPanel({ memory, onRefresh, onSave, text }: MemoryPanelProp
   );
 }
 
-function MarkdownPreview({ markdown }: { markdown: string }) {
-  return (
-    <div className="space-y-3 text-base leading-8 text-[#111827]">
-      {markdown.split("\n").map((line, index) => {
-        const trimmed = line.trim();
+function formatKey(key: string) {
+  return key.replaceAll("_", " ");
+}
 
-        if (!trimmed) {
-          return <div className="h-2" key={`${index}-blank`} />;
-        }
+function formatValue(value: MemoryItem["value"]) {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
 
-        if (trimmed.startsWith("# ")) {
-          return (
-            <h1 className="pt-1 text-2xl font-semibold" key={`${index}-${trimmed}`}>
-              {trimmed.slice(2)}
-            </h1>
-          );
-        }
+  return String(value);
+}
 
-        if (trimmed.startsWith("## ")) {
-          return (
-            <h2 className="pt-4 text-lg font-semibold" key={`${index}-${trimmed}`}>
-              {trimmed.slice(3)}
-            </h2>
-          );
-        }
+function coerceEditedValue(value: string, previous: MemoryItem["value"]): MemoryItem["value"] {
+  if (Array.isArray(previous)) {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
 
-        if (trimmed.startsWith("- ")) {
-          return (
-            <div className="grid grid-cols-[18px_1fr] gap-2" key={`${index}-${trimmed}`}>
-              <span className="text-[#6b7280]">-</span>
-              <p>{trimmed.slice(2)}</p>
-            </div>
-          );
-        }
+  if (typeof previous === "number") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : previous;
+  }
 
-        return <p key={`${index}-${trimmed}`}>{trimmed}</p>;
-      })}
-    </div>
-  );
+  if (typeof previous === "boolean") {
+    return value.trim().toLowerCase() === "true";
+  }
+
+  return value.trim();
 }

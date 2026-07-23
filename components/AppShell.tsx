@@ -15,8 +15,15 @@ import type { FormEvent, ReactNode, RefObject } from "react";
 import { AgentResponse } from "@/components/AgentResponse";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { ObservabilityPanel } from "@/components/ObservabilityPanel";
-import { isAgentStreamEvent } from "@/lib/agent/contracts";
-import { createId, defaultMemory, formatClock, inferScenario, taskOptions } from "@/lib/demoData";
+import { isAgentRun, parseAgentStreamEvent } from "@/lib/agent/contracts";
+import { reduceAgentEvent } from "@/lib/agent/events";
+import {
+  exportProductEvents,
+  loadProductEvents,
+  recordProductEvent,
+  summarizeProductEvents
+} from "@/lib/analytics";
+import { createId, formatClock, inferScenario, taskOptions } from "@/lib/demoData";
 import { htmlLang, languageOptions, uiCopy } from "@/lib/i18n";
 import type { UiCopy, UiLanguage } from "@/lib/i18n";
 import {
@@ -27,57 +34,17 @@ import {
   saveLanguage,
   saveMemory
 } from "@/lib/storage";
-import type { AgentFeedback, AgentRun, ChatMessage, Conversation, ScenarioId, UserMemory } from "@/lib/types";
+import type {
+  AgentFeedback,
+  AgentRun,
+  ChatMessage,
+  Conversation,
+  MemoryItem,
+  ScenarioId
+} from "@/lib/types";
 
 type ViewMode = "chat" | "memory";
 type UtilityPanel = "help" | "language" | null;
-
-function createMemoryContext(memoryDocument: string, source: ScenarioId): UserMemory[] {
-  const text = memoryDocument.trim();
-
-  if (!text) {
-    return [];
-  }
-
-  return [
-    {
-      id: "memory-document",
-      text,
-      source,
-      createdAt: "Memory"
-    }
-  ];
-}
-
-function conversationMessagesForMemory(conversation: Conversation) {
-  return conversation.messages
-    .map((message) => {
-      if (message.role === "user") {
-        return {
-          role: "user" as const,
-          content: message.content
-        };
-      }
-
-      const run = conversation.runs[message.runId];
-
-      if (!run) {
-        return null;
-      }
-
-      const recommendationText = run.recommendations
-        .map((item) => `${item.rank}. ${item.title} - ${item.reason}`)
-        .join("\n");
-
-      return {
-        role: "assistant" as const,
-        content: [run.summary, recommendationText].filter(Boolean).join("\n")
-      };
-    })
-    .filter((message): message is { role: "user" | "assistant"; content: string } =>
-      Boolean(message?.content.trim())
-    );
-}
 
 export function AppShell() {
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
@@ -87,7 +54,7 @@ export function AppShell() {
   const [runs, setRuns] = useState<Record<string, AgentRun>>({});
   const [activeRunId, setActiveRunId] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [memory, setMemory] = useState(defaultMemory);
+  const [memory, setMemory] = useState<MemoryItem[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [utilityPanel, setUtilityPanel] = useState<UtilityPanel>(null);
   const [language, setLanguage] = useState<UiLanguage>("ja");
@@ -97,6 +64,9 @@ export function AppShell() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
+  const recordedSignalsRef = useRef(new Set<string>());
+  const runStartedAtRef = useRef(new Map<string, number>());
+  const [productMetrics, setProductMetrics] = useState(() => summarizeProductEvents([]));
 
   const activeRun = activeRunId ? runs[activeRunId] : undefined;
   const copy = uiCopy[language];
@@ -108,6 +78,7 @@ export function AppShell() {
     setConversations(storedConversations);
     setMemory(loadMemory());
     setLanguage(loadLanguage());
+    setProductMetrics(summarizeProductEvents(loadProductEvents()));
 
     if (firstConversation) {
       setActiveConversationId(firstConversation.id);
@@ -127,6 +98,14 @@ export function AppShell() {
     const saveTimer = window.setTimeout(() => saveConversations(conversations), 120);
     return () => window.clearTimeout(saveTimer);
   }, [conversations, isReady]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+
+    saveMemory(memory);
+  }, [isReady, memory]);
 
   useEffect(() => () => requestControllerRef.current?.abort(), []);
 
@@ -148,7 +127,7 @@ export function AppShell() {
     }
 
     scrollArea.scrollTop = scrollArea.scrollHeight;
-  }, [activeRunId, messages.length, viewMode]);
+  }, [activeRun?.state, activeRunId, messages.length, viewMode]);
 
   function upsertConversation(nextConversation: Conversation) {
     setConversations((current) => [
@@ -213,36 +192,8 @@ export function AppShell() {
     setDeleteTargetId("");
   }
 
-  function handleMemorySave(nextMemory: string) {
+  function handleMemoryChange(nextMemory: MemoryItem[]) {
     setMemory(nextMemory);
-    saveMemory(nextMemory);
-  }
-
-  async function refreshMemory(nextMemory: string) {
-    const recentMessages = conversations
-      .flatMap((conversation) => conversationMessagesForMemory(conversation))
-      .slice(-30);
-
-    const response = await fetch("/api/memory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        memory: nextMemory,
-        messages: recentMessages
-      })
-    });
-
-    if (!response.ok) {
-      const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(errorBody?.error ?? "Memory update failed.");
-    }
-
-    const result = (await response.json()) as { memory?: string };
-    const updatedMemory = result.memory?.trim();
-
-    if (updatedMemory) {
-      handleMemorySave(updatedMemory);
-    }
   }
 
   function selectTask(scenario: ScenarioId) {
@@ -270,14 +221,13 @@ export function AppShell() {
     nextMessages: ChatMessage[];
     nextRuns: Record<string, AgentRun>;
   }) {
-    const updatedAt = new Date().toISOString();
     upsertConversation({
       id: conversationId,
       title: conversationTitle,
       messages: nextMessages,
       runs: nextRuns,
       activeRunId: activeId,
-      updatedAt
+      updatedAt: new Date().toISOString()
     });
   }
 
@@ -292,22 +242,184 @@ export function AppShell() {
       const nextRun = updater(currentRun);
       const nextRuns = { ...current, [runId]: nextRun };
 
-      if (activeConversationId) {
-        setConversations((currentConversations) =>
-          currentConversations.map((conversation) =>
-            conversation.id === activeConversationId
-              ? { ...conversation, runs: nextRuns, activeRunId: runId, updatedAt: new Date().toISOString() }
-              : conversation
-          )
-        );
-      }
+      setConversations((currentConversations) =>
+        currentConversations.map((conversation) =>
+          conversation.runs[runId]
+            ? {
+                ...conversation,
+                runs: { ...conversation.runs, [runId]: nextRun },
+                activeRunId: runId,
+                updatedAt: new Date().toISOString()
+              }
+            : conversation
+        )
+      );
 
       return nextRuns;
     });
   }
 
+  function addProductEvent(
+    event: Parameters<typeof recordProductEvent>[0],
+    dedupeKey?: string
+  ) {
+    if (dedupeKey && recordedSignalsRef.current.has(dedupeKey)) {
+      return;
+    }
+
+    if (dedupeKey) {
+      recordedSignalsRef.current.add(dedupeKey);
+    }
+
+    recordProductEvent(event);
+    setProductMetrics(summarizeProductEvents(loadProductEvents()));
+  }
+
+  function captureRunSignals(run: AgentRun) {
+    if (run.state === "needs_clarification") {
+      addProductEvent(
+        {
+          type: "clarification_shown",
+          runId: run.id,
+          scenario: run.scenario,
+          language
+        },
+        `${run.id}:clarification`
+      );
+    }
+
+    for (const tool of run.tools) {
+      if (tool.status === "success" || tool.status === "error") {
+        addProductEvent(
+          {
+            type: tool.status === "success" ? "tool_succeeded" : "tool_failed",
+            runId: run.id,
+            scenario: run.scenario,
+            language,
+            value: tool.tool
+          },
+          `${run.id}:tool:${tool.id}:${tool.status}`
+        );
+      }
+    }
+
+    for (const recommendation of run.recommendations) {
+      addProductEvent(
+        {
+          type: "recommendation_impression",
+          runId: run.id,
+          scenario: run.scenario,
+          language,
+          value: recommendation.id
+        },
+        `${run.id}:impression:${recommendation.id}`
+      );
+    }
+
+    for (const proposal of run.memoryProposals) {
+      addProductEvent(
+        {
+          type: "memory_proposed",
+          runId: run.id,
+          scenario: run.scenario,
+          language,
+          value: proposal.namespace
+        },
+        `${run.id}:memory-proposed:${proposal.id}`
+      );
+    }
+
+    if (["completed", "degraded"].includes(run.state)) {
+      const durationMs = Math.max(
+        0,
+        Date.now() - (runStartedAtRef.current.get(run.id) ?? Date.now())
+      );
+      addProductEvent(
+        {
+          type: "task_completed",
+          runId: run.id,
+          scenario: run.scenario,
+          language,
+          value: run.state,
+          durationMs
+        },
+        `${run.id}:completed`
+      );
+    }
+  }
+
   function recordFeedback(runId: string, feedback: AgentFeedback) {
     updateRun(runId, (run) => ({ ...run, feedback }));
+    const run = runs[runId];
+
+    if (run) {
+      addProductEvent({
+        type: "feedback_submitted",
+        runId,
+        scenario: run.scenario,
+        language,
+        value: feedback
+      });
+    }
+  }
+
+  function decideMemory(
+    runId: string,
+    proposal: MemoryItem,
+    decision: "approved" | "rejected"
+  ) {
+    const now = new Date().toISOString();
+    const status = decision === "approved" ? "approved" : "rejected";
+
+    updateRun(runId, (run) => ({
+      ...run,
+      memoryProposals: run.memoryProposals.map((item) =>
+        item.id === proposal.id ? { ...item, status, updatedAt: now } : item
+      ),
+      approvals: [
+        ...run.approvals.filter((item) => item.memoryId !== proposal.id),
+        {
+          id: `approval-${proposal.id}`,
+          memoryId: proposal.id,
+          label: `${proposal.key}: ${formatMemoryValue(proposal.value)}`,
+          status: decision === "approved" ? "approved" : "declined",
+          time: now
+        }
+      ]
+    }));
+
+    if (decision === "approved") {
+      setMemory((current) => [
+        ...current.filter(
+          (item) =>
+            item.id !== proposal.id &&
+            !(item.namespace === proposal.namespace && item.key === proposal.key)
+        ),
+        { ...proposal, status: "approved", updatedAt: now }
+      ]);
+    }
+
+    const run = runs[runId];
+
+    if (run) {
+      addProductEvent({
+        type: decision === "approved" ? "memory_approved" : "memory_rejected",
+        runId,
+        scenario: run.scenario,
+        language,
+        value: proposal.namespace
+      });
+    }
+  }
+
+  function recordRecommendationClick(run: AgentRun, recommendationId: string) {
+    addProductEvent({
+      type: "recommendation_clicked",
+      runId: run.id,
+      scenario: run.scenario,
+      language,
+      value: recommendationId
+    });
   }
 
   async function readAgentStream(
@@ -319,16 +431,30 @@ export function AppShell() {
     if (!response.body || !contentType.includes("application/x-ndjson")) {
       const result = (await response.json()) as { run?: AgentRun };
 
-      if (result.run) {
-        onRun(result.run);
+      if (!result.run || !isAgentRun(result.run)) {
+        throw new Error("Agent response did not match the runtime contract.");
       }
 
+      onRun(result.run);
       return;
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let streamRun: AgentRun | undefined;
+
+    const applyLine = (line: string) => {
+      const raw: unknown = JSON.parse(line);
+      const event = parseAgentStreamEvent(raw);
+
+      if (!event) {
+        return;
+      }
+
+      streamRun = reduceAgentEvent(streamRun, event);
+      onRun(streamRun);
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -344,14 +470,8 @@ export function AppShell() {
         const line = buffer.slice(0, newlineIndex).trim();
         buffer = buffer.slice(newlineIndex + 1);
 
-        if (!line) {
-          continue;
-        }
-
-        const event: unknown = JSON.parse(line);
-
-        if (isAgentStreamEvent(event)) {
-          onRun(event.run);
+        if (line) {
+          applyLine(line);
         }
       }
     }
@@ -359,17 +479,12 @@ export function AppShell() {
     const finalLine = buffer.trim();
 
     if (finalLine) {
-      const event: unknown = JSON.parse(finalLine);
-
-      if (isAgentStreamEvent(event)) {
-        onRun(event.run);
-      }
+      applyLine(finalLine);
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     const text = draft.trim();
 
     if (!text || isRunning) {
@@ -402,9 +517,15 @@ export function AppShell() {
     ];
     let nextRuns = { ...runs };
 
+    runStartedAtRef.current.set(runId, Date.now());
+    addProductEvent({
+      type: "prompt_submitted",
+      runId,
+      scenario,
+      language
+    });
     requestControllerRef.current?.abort();
     requestControllerRef.current = controller;
-
     setViewMode("chat");
     setActiveConversationId(conversationId);
     setActiveRunId(runId);
@@ -429,7 +550,7 @@ export function AppShell() {
           scenario,
           runId,
           startedAt,
-          memory: createMemoryContext(memory, scenario),
+          memory: memory.filter((item) => item.status === "approved"),
           language
         }),
         signal: controller.signal
@@ -440,6 +561,7 @@ export function AppShell() {
       }
 
       await readAgentStream(response, (run) => {
+        captureRunSignals(run);
         nextRuns = { ...nextRuns, [run.id]: run };
         setRuns(nextRuns);
         applyConversationSnapshot({
@@ -455,29 +577,13 @@ export function AppShell() {
         return;
       }
 
-      const errorRun: AgentRun = {
-        id: runId,
+      const errorRun = createClientErrorRun({
+        copy,
+        runId,
         scenario,
-        title: "API error",
-        summary: copy.apiErrorSummary,
-        userPrompt: text,
-        statusLabel: copy.apiErrorStatus,
         startedAt,
-        plan: [],
-        recommendations: [],
-        approvals: [],
-        memoryUpdates: [],
-        tools: [
-          {
-            id: "client-api-error",
-            tool: "agent_api_request",
-            input: "POST /api/agent",
-            status: "error",
-            latency: "-"
-          }
-        ]
-      };
-
+        text
+      });
       nextRuns = { ...nextRuns, [runId]: errorRun };
       setRuns(nextRuns);
       applyConversationSnapshot({
@@ -496,7 +602,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="grid h-dvh grid-cols-1 overflow-hidden bg-white text-[#111827] lg:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[248px_minmax(0,1fr)_320px]">
+    <div className="grid h-dvh grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white text-[#111827] lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-1 xl:grid-cols-[232px_minmax(0,1fr)_300px]">
       <Sidebar
         activeConversationId={activeConversationId}
         activePanel={utilityPanel}
@@ -510,22 +616,26 @@ export function AppShell() {
         onOpenMemory={openMemory}
         onSelectConversation={selectConversation}
         onSetDeleteTarget={setDeleteTargetId}
-        onTogglePanel={(panel) => setUtilityPanel((current) => (current === panel ? null : panel))}
+        onTogglePanel={(panel) =>
+          setUtilityPanel((current) => (current === panel ? null : panel))
+        }
         viewMode={viewMode}
       />
 
       <main className="flex min-h-0 flex-col overflow-hidden bg-white">
         {viewMode === "memory" ? (
-          <MemoryPanel
-            memory={memory}
-            onRefresh={refreshMemory}
-            onSave={handleMemorySave}
-            text={copy}
-          />
+          <MemoryPanel memory={memory} onChange={handleMemoryChange} text={copy} />
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-7" ref={scrollAreaRef}>
-              <div aria-live="polite" className="mx-auto flex w-full max-w-[880px] flex-col gap-7" role="log">
+            <div
+              className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-7"
+              ref={scrollAreaRef}
+            >
+              <div
+                aria-live="polite"
+                className="mx-auto flex w-full max-w-[840px] flex-col gap-7"
+                role="log"
+              >
                 {messages.length === 0 ? (
                   <StarterConversations copy={copy} onSelectTask={selectTask} />
                 ) : (
@@ -542,9 +652,15 @@ export function AppShell() {
 
                     return (
                       <AgentResponse
-                        key={message.id}
                         copy={copy}
+                        key={message.id}
                         onFeedback={(feedback) => recordFeedback(run.id, feedback)}
+                        onMemoryDecision={(proposal, decision) =>
+                          decideMemory(run.id, proposal, decision)
+                        }
+                        onRecommendationClick={(recommendationId) =>
+                          recordRecommendationClick(run, recommendationId)
+                        }
                         run={run}
                         time={message.time}
                       />
@@ -556,17 +672,23 @@ export function AppShell() {
 
             <Composer
               composerRef={composerRef}
+              copy={copy}
               draft={draft}
               isRunning={isRunning}
               onChange={handleDraftChange}
               onSubmit={handleSubmit}
-              copy={copy}
             />
           </>
         )}
       </main>
 
-      <ObservabilityPanel copy={copy} memory={memory} run={activeRun} />
+      <ObservabilityPanel
+        copy={copy}
+        memory={memory}
+        metrics={productMetrics}
+        onExportMetrics={exportProductEvents}
+        run={activeRun}
+      />
     </div>
   );
 }
@@ -603,22 +725,37 @@ function Sidebar({
   viewMode: ViewMode;
 }) {
   return (
-    <aside className="flex min-h-0 border-b border-[#e5e7eb] bg-[#fafafa] lg:h-dvh lg:flex-col lg:border-b-0 lg:border-r">
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-4 p-3 lg:p-4">
-        <div className="shrink-0 px-1 pt-1">
-          <h1 className="flex items-center gap-2 truncate text-lg font-bold leading-tight tracking-tight text-[#111827]">
-            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-[#ff0033]" />
-            Agent yh
-          </h1>
+    <aside className="shrink-0 bg-[#f7f7f8] lg:h-dvh">
+      <div className="flex items-center gap-2 px-3 py-2.5 lg:hidden">
+        <Brand />
+        <div className="ml-auto flex items-center gap-1">
+          <IconNavButton icon={<SquarePen size={18} />} label={copy.newChat} onClick={onNewChat} />
+          <IconNavButton icon={<BookOpen size={18} />} label={copy.memory} onClick={onOpenMemory} />
+          <select
+            aria-label={copy.languageLabel}
+            className="h-9 rounded-lg bg-transparent px-2 text-sm text-[#4b5563] outline-none focus:ring-2 focus:ring-[#ff99ad]"
+            onChange={(event) => onLanguageChange(event.target.value as UiLanguage)}
+            value={language}
+          >
+            {languageOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
+      </div>
 
-        <div className="grid shrink-0 grid-cols-2 gap-1 lg:grid-cols-1">
-          <NavButton icon={<SquarePen size={20} />} onClick={onNewChat}>
+      <div className="hidden h-full min-h-0 flex-col gap-4 p-4 lg:flex">
+        <Brand />
+
+        <div className="grid gap-1">
+          <NavButton icon={<SquarePen size={19} />} onClick={onNewChat}>
             {copy.newChat}
           </NavButton>
           <NavButton
             active={viewMode === "memory"}
-            icon={<BookOpen size={20} />}
+            icon={<BookOpen size={19} />}
             onClick={onOpenMemory}
             testId="nav-memory"
           >
@@ -626,7 +763,7 @@ function Sidebar({
           </NavButton>
         </div>
 
-        <div className="hidden min-h-0 flex-1 flex-col border-t border-[#e5e7eb] pt-4 lg:flex">
+        <div className="flex min-h-0 flex-1 flex-col pt-2">
           <div className="mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#6b7280]">
             <MessageSquare size={13} />
             {copy.chatHistory}
@@ -636,10 +773,10 @@ function Sidebar({
               conversations.map((conversation) => (
                 <div className="relative" key={conversation.id}>
                   <button
-                    className={`w-full rounded-md px-2.5 py-2 pr-14 text-left text-base transition ${
+                    className={`w-full rounded-lg px-2.5 py-2 pr-12 text-left text-sm transition ${
                       conversation.id === activeConversationId && viewMode === "chat"
-                        ? "bg-white text-[#111827] shadow-sm ring-1 ring-[#e5e7eb]"
-                        : "text-[#4b5563] hover:bg-[#f3f4f6] hover:text-[#111827]"
+                        ? "bg-white font-medium text-[#111827]"
+                        : "text-[#4b5563] hover:bg-white/70 hover:text-[#111827]"
                     }`}
                     onClick={() => onSelectConversation(conversation)}
                     onContextMenu={(event) => {
@@ -654,7 +791,7 @@ function Sidebar({
                   {deleteTargetId === conversation.id ? (
                     <button
                       aria-label={copy.delete}
-                      className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md bg-[#fbe7e7] text-[#b42318] transition hover:bg-[#f7d4d4]"
+                      className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-[#fff0f3] text-[#b42318]"
                       onClick={() => onDeleteConversation(conversation.id)}
                       title={copy.delete}
                       type="button"
@@ -665,42 +802,71 @@ function Sidebar({
                 </div>
               ))
             ) : (
-              <p className="px-2 text-sm leading-6 text-[#6b7280]">
-                {copy.emptyHistory}
-              </p>
+              <p className="px-2 text-sm leading-6 text-[#9ca3af]">{copy.emptyHistory}</p>
             )}
           </div>
         </div>
 
-        <div className="relative mt-auto hidden shrink-0 lg:block">
+        <div className="relative mt-auto shrink-0">
           {activePanel ? (
             <UtilityPopover
-              language={language}
               copy={copy}
+              language={language}
               onLanguageChange={onLanguageChange}
               panel={activePanel}
             />
           ) : null}
 
-          <div className="flex justify-start gap-2">
+          <div className="flex justify-start gap-1">
             <UtilityButton
               active={activePanel === "help"}
-              icon={<Info size={18} />}
+              icon={<Info size={17} />}
               label={copy.helpLabel}
-              testId="utility-help"
               onClick={() => onTogglePanel("help")}
+              testId="utility-help"
             />
             <UtilityButton
               active={activePanel === "language"}
-              icon={<Languages size={18} />}
+              icon={<Languages size={17} />}
               label={copy.languageLabel}
-              testId="utility-language"
               onClick={() => onTogglePanel("language")}
+              testId="utility-language"
             />
           </div>
         </div>
       </div>
     </aside>
+  );
+}
+
+function Brand() {
+  return (
+    <h1 className="flex shrink-0 items-center gap-2 truncate px-1 text-base font-bold tracking-tight text-[#111827]">
+      <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-[#ff0033]" />
+      Agent yh
+    </h1>
+  );
+}
+
+function IconNavButton({
+  icon,
+  label,
+  onClick
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="flex h-9 w-9 items-center justify-center rounded-lg text-[#4b5563] transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {icon}
+    </button>
   );
 }
 
@@ -719,8 +885,8 @@ function NavButton({
 }) {
   return (
     <button
-      className={`flex min-h-11 items-center justify-center gap-3 rounded-lg px-2 text-base font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#ff99ad] lg:justify-start ${
-        active ? "bg-white shadow-sm ring-1 ring-[#e5e7eb]" : "bg-transparent hover:bg-[#f3f4f6]"
+      className={`flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#ff99ad] ${
+        active ? "bg-white text-[#111827]" : "bg-transparent text-[#374151] hover:bg-white/70"
       }`}
       data-testid={testId}
       onClick={onClick}
@@ -748,8 +914,8 @@ function UtilityButton({
   return (
     <button
       aria-label={label}
-      className={`flex h-10 w-10 items-center justify-center rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[#ff99ad] ${
-        active ? "bg-white text-[#111827] shadow-sm ring-1 ring-[#e5e7eb]" : "text-[#4b5563] hover:bg-[#f3f4f6]"
+      className={`flex h-9 w-9 items-center justify-center rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[#ff99ad] ${
+        active ? "bg-white text-[#111827]" : "text-[#4b5563] hover:bg-white/70"
       }`}
       data-testid={testId}
       onClick={onClick}
@@ -773,13 +939,11 @@ function UtilityPopover({
   panel: Exclude<UtilityPanel, null>;
 }) {
   return (
-    <div className="absolute bottom-12 left-0 right-0 z-10 max-h-[320px] overflow-y-auto rounded-xl bg-white p-3 shadow-lg ring-1 ring-[#e5e7eb]">
+    <div className="absolute bottom-11 left-0 right-0 z-10 max-h-[320px] overflow-y-auto rounded-xl bg-white p-3 shadow-lg">
       {panel === "help" ? (
         <>
-          <p className="text-sm leading-6 text-[#4b5563]">
-            {copy.helpIntro}
-          </p>
-          <div className="mt-3 space-y-1 text-sm leading-6 text-[#4b5563]">
+          <p className="text-sm font-medium text-[#374151]">{copy.helpIntro}</p>
+          <div className="mt-2 space-y-1 text-xs leading-5 text-[#6b7280]">
             {copy.helpItems.map((item) => (
               <p key={item}>{item}</p>
             ))}
@@ -789,17 +953,17 @@ function UtilityPopover({
 
       {panel === "language" ? (
         <>
-          <h2 className="text-base font-semibold">{copy.languageTitle}</h2>
-          <div className="mt-3 grid gap-1">
+          <h2 className="text-sm font-semibold">{copy.languageTitle}</h2>
+          <div className="mt-2 grid gap-1">
             {languageOptions.map((option) => (
               <button
-                className={`flex min-h-9 items-center justify-between rounded-md px-2 text-sm transition ${
+                className={`flex min-h-9 items-center justify-between rounded-lg px-2 text-sm transition ${
                   language === option.id
                     ? "bg-[#fff0f3] text-[#b00024]"
                     : "text-[#4b5563] hover:bg-[#f3f4f6]"
                 }`}
                 key={option.id}
-                onClick={() => onLanguageChange(option.id as UiLanguage)}
+                onClick={() => onLanguageChange(option.id)}
                 type="button"
               >
                 <span>{option.label}</span>
@@ -821,31 +985,29 @@ function StarterConversations({
   onSelectTask: (scenario: ScenarioId) => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-[800px] flex-col gap-3 pt-8 sm:pt-12">
+    <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 pt-4 sm:pt-8">
       {taskOptions.map((option) => {
         const Icon = option.icon;
         const task = copy.tasks[option.id];
 
         return (
           <button
-            className="group rounded-2xl border border-[#e5e7eb] bg-white px-4 py-4 text-left shadow-[0_1px_2px_rgba(17,24,39,0.03)] outline-none transition hover:-translate-y-0.5 hover:border-[#d1d5db] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#ff99ad] motion-reduce:hover:translate-y-0"
+            className="group rounded-2xl bg-[#f7f7f8] px-4 py-4 text-left outline-none transition hover:bg-[#f1f1f2] focus-visible:ring-2 focus-visible:ring-[#ff99ad]"
             data-testid={`starter-${option.id}`}
             key={option.id}
             onClick={() => onSelectTask(option.id)}
             type="button"
           >
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#fff0f3] text-[#d6002b]">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#d6002b]">
                 <Icon size={18} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="text-base font-semibold text-[#111827]">
-                    {task.title}
-                  </h2>
-                  <span className="text-sm font-medium text-[#d6002b]">{copy.clickToFill}</span>
+                  <h2 className="text-sm font-semibold text-[#111827]">{task.title}</h2>
+                  <span className="text-xs font-medium text-[#d6002b]">{copy.clickToFill}</span>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-base leading-7 text-[#4b5563]">
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#4b5563]">
                   {task.prompt}
                 </p>
               </div>
@@ -860,7 +1022,7 @@ function StarterConversations({
 function UserMessage({ message }: { message: Extract<ChatMessage, { role: "user" }> }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[88%] rounded-2xl rounded-tr-md bg-[#f3f4f6] px-4 py-2.5 text-base leading-8 text-[#1f2937]">
+      <div className="max-w-[88%] rounded-2xl rounded-tr-md bg-[#f3f4f6] px-4 py-2.5 text-base leading-7 text-[#1f2937]">
         <div className="whitespace-pre-wrap">{message.content}</div>
       </div>
     </div>
@@ -870,8 +1032,8 @@ function UserMessage({ message }: { message: Extract<ChatMessage, { role: "user"
 function AssistantPending({ copy }: { copy: UiCopy }) {
   return (
     <section aria-live="polite" className="flex items-start gap-3 text-[#6b7280]">
-      <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ff0033] text-white shadow-sm">
-        <Bot size={18} />
+      <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ff0033] text-white">
+        <Bot aria-hidden="true" size={18} />
       </div>
       <div className="min-w-0 flex-1 pt-1">
         <div className="mb-2 flex items-baseline gap-2">
@@ -900,9 +1062,9 @@ function Composer({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <div className="shrink-0 border-t border-[#f3f4f6] bg-white px-4 py-4 sm:px-7">
+    <div className="shrink-0 bg-white px-4 py-3 sm:px-7 sm:py-4">
       <form
-        className="mx-auto flex w-full max-w-[880px] items-end gap-3 rounded-2xl border border-[#d1d5db] bg-white px-3 py-3 shadow-[0_6px_24px_rgba(17,24,39,0.08)] transition focus-within:border-[#ff6685] focus-within:ring-2 focus-within:ring-[#ffe0e6]"
+        className="mx-auto flex w-full max-w-[840px] items-end gap-3 rounded-2xl bg-white px-3 py-2.5 shadow-[0_4px_22px_rgba(17,24,39,0.10)] ring-1 ring-[#dfe1e5] transition focus-within:ring-2 focus-within:ring-[#ff99ad]"
         onSubmit={onSubmit}
       >
         <textarea
@@ -928,9 +1090,74 @@ function Composer({
           title={copy.send}
           type="submit"
         >
-          <SendHorizontal size={17} />
+          <SendHorizontal aria-hidden="true" size={17} />
         </button>
       </form>
     </div>
   );
+}
+
+function createClientErrorRun({
+  copy,
+  runId,
+  scenario,
+  startedAt,
+  text
+}: {
+  copy: UiCopy;
+  runId: string;
+  scenario: ScenarioId;
+  startedAt: string;
+  text: string;
+}): AgentRun {
+  const traceId = `trace-${runId}`;
+
+  return {
+    id: runId,
+    traceId,
+    scenario,
+    state: "failed",
+    title: copy.apiErrorStatus,
+    summary: copy.apiErrorSummary,
+    userPrompt: text,
+    statusLabel: copy.apiErrorStatus,
+    startedAt,
+    plan: [],
+    recommendations: [],
+    approvals: [],
+    memoryProposals: [],
+    tools: [
+      {
+        id: "client-api-error",
+        tool: "agent_api_request",
+        input: "POST /api/agent",
+        status: "error",
+        latencyMs: null,
+        retryCount: 0,
+        cacheStatus: "disabled",
+        evidenceCount: 0,
+        errorCode: "UNKNOWN"
+      }
+    ],
+    trace: {
+      traceId,
+      runId,
+      state: "failed",
+      modelProfile: "unknown",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      spans: [],
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedTokens: 0,
+        estimatedCostYen: null
+      },
+      errorCode: "UNKNOWN"
+    }
+  };
+}
+
+function formatMemoryValue(value: MemoryItem["value"]) {
+  return Array.isArray(value) ? value.join(", ") : String(value);
 }

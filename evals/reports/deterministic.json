@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-07-23T05:10:34.724Z",
+  "methodology": "Synthetic, deterministic fixtures; no live API or model calls.",
+  "dataset": {
+    "total": 120,
+    "categories": {
+      "shopping": 30,
+      "outing": 30,
+      "multilingual": 20,
+      "clarification": 15,
+      "upstream_failure": 10,
+      "adversarial": 10,
+      "memory_conflict": 5
+    }
+  },
+  "metrics": {
+    "intentAccuracy": 1,
+    "slotExactMatch": 1,
+    "clarificationPrecision": 1,
+    "deterministicGroundingPrecision": 1,
+    "unsupportedClaimRate": 0,
+    "evidenceGuardCatchRate": 1,
+    "hardBudgetSatisfaction": 1,
+    "deduplicationPass": true,
+    "reviewConfidenceRankingPass": true,
+    "distanceRankingPass": true
+  },
+  "categoryResults": {
+    "shopping": {
+      "correct": 30,
+      "total": 30
+    },
+    "outing": {
+      "correct": 30,
+      "total": 30
+    },
+    "multilingual": {
+      "correct": 20,
+      "total": 20
+    },
+    "clarification": {
+      "correct": 15,
+      "total": 15
+    },
+    "upstream_failure": {
+      "correct": 10,
+      "total": 10
+    },
+    "adversarial": {
+      "correct": 10,
+      "total": 10
+    },
+    "memory_conflict": {
+      "correct": 5,
+      "total": 5
+    }
+  }
+}

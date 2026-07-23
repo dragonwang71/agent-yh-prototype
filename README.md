@@ -4,85 +4,85 @@
 
 [English](docs/README.en.md) | [中文](docs/README.zh-CN.md)
 
-Agent yh は、買い物と外出の判断を支援する source-grounded AI agent です。自然文から条件を整理し、Yahoo! JAPAN の Shopping・地図・天気 API で取得した実データだけを使って、比較しやすい候補と次の行動を返します。
+Agent yh は、買い物と外出の判断を支援する、評価駆動・source-grounded な AI agent です。自然文の曖昧さはモデルで整理し、価格・評価・場所・天気は Yahoo! JAPAN の取得データと field-level evidence で検証します。
 
 ## Live demo
 
 **[Agent yh をブラウザで試す →](https://agent-yh-prototype.vercel.app)**
 
-[![Agent yh walkthrough](docs/assets/agent-yh-preview.gif)](docs/assets/agent-yh-walkthrough.mp4)
+[![Agent yh v2 walkthrough](docs/assets/agent-yh-preview.gif)](docs/assets/agent-yh-walkthrough.mp4)
 
-[ウォークスルー動画を開く](docs/assets/agent-yh-walkthrough.mp4)
+[23 秒のウォークスルーを MP4 で見る](docs/assets/agent-yh-walkthrough.mp4)
+
+## Quality snapshot
+
+2026年7月23日の実測値です。固定 fixture、実モデル、live API を混同しないよう分けて記録しています。
+
+| 評価 | 結果 |
+|---|---:|
+| Deterministic eval | 120 cases |
+| Intent accuracy / slot exact match | 100% / 100% |
+| Unsupported factual claim rate | 0% |
+| Evidence guard / hard budget | 100% / 100% |
+| `gpt-5.6-terra` model eval | 20 / 20（全件モデル使用） |
+| Yahoo live canary | Shopping 452ms / Geocoder 231ms |
+
+詳細と限界は [benchmark](docs/benchmark.md) と [evaluation](docs/evaluation.md) に記載しています。
 
 ## 体験設計
 
-- **結論を先に表示** — 最初に判断を短く示し、その後に候補を比較できます。
-- **実データに限定** — 価格、評価、店舗、場所、天気は API の返却値だけを表示します。
-- **明確な次の行動** — 商品ページや地図を、文字付きの操作から直接開けます。
-- **必要なときだけ技術詳細** — agent の判断、tool、処理時間は実行ログに分離しています。
-- **フィードバックループ** — 回答ごとに「役に立った / 改善が必要」を記録できます。
+- **不足情報を推測しない** — 商品や場所が欠けているときは、一つの確認質問を返します。
+- **比較できる根拠** — 予算、評価の信頼度、距離、データ充足度を決定的に採点します。
+- **不明を残す** — 寸法や営業時間など取得できない項目は `未確認` と表示します。
+- **利用者が管理するメモリー** — 提案された好みは、承認後だけブラウザへ保存します。
+- **静かな主画面** — 技術詳細は展開可能な根拠と開発用 trace debugger に分離します。
 - **日本語優先の多言語 UI** — 日本語、英語、中国語を切り替えられます。
 
 ## Agent workflow
 
 ```mermaid
 flowchart TD
-  A["自然文の依頼"] --> B["Intent decision"]
-  B --> C{"Shopping / Outing"}
-
-  C -->|"Shopping"| D["Yahoo Shopping API"]
-  D --> E["価格・店舗・評価を整形"]
-
-  C -->|"Outing"| F["Yahoo Geocoder"]
-  F --> G["Yahoo Weather"]
-  G --> H["次の検索条件を決定"]
-  H --> I["Yahoo Local Search"]
-  I --> J["場所・移動情報を整形"]
-
-  E --> K["Runtime contract"]
-  J --> K
-  K --> L["回答 + 実行ログ"]
-  L --> M["User feedback"]
-  M --> N["Harness case"]
+  A["自然文の依頼"] --> B["Strict intent"]
+  B --> C{"重要条件は十分か"}
+  C -->|"No"| D["確認質問"]
+  C -->|"Yes"| E["Typed Yahoo tools"]
+  E --> F["Filter and ranking"]
+  F --> G["Field evidence validation"]
+  G --> H["Delta event stream"]
+  H --> I["回答と明確な操作"]
+  I --> J["Feedback and approved memory"]
 ```
 
 ## Engineering highlights
 
 | 領域 | 実装 |
 | --- | --- |
-| Source grounding | 外部 API の返却フィールドだけから回答を構築 |
-| Model fallback | OpenAI の判断が失敗した場合は決定的な heuristics へ移行 |
-| Runtime contract | 不完全な streaming event を UI 境界で拒否 |
-| Reliability | 外部 request timeout、会話切り替え時の cancellation、入力上限 |
-| Performance | 進捗 streaming、localStorage 書き込みの debounce、履歴上限 |
-| AI harness | 多言語 routing、抽出、雨天 guardrail、response contract の自動評価 |
-| Feedback loop | 回答評価を会話単位で保持し、失敗分類から eval へ接続 |
-| Delivery | TypeScript、Vitest、production build を GitHub Actions で検証 |
+| Structured model | Responses API、Zod、Strict Structured Outputs、`store: false` |
+| Bounded orchestration | single-agent state machine、call/retry/deadline budget |
+| Typed tools | Yahoo response schema、abort、timeout、typed error、evidence |
+| Ranking | hard budget、dedupe、Bayesian review confidence、distance |
+| Grounding | visible factual fields と evidence ID を final validator で照合 |
+| Human approval | structured memory は approve 後だけ保存 |
+| Evaluation | 120 cases、model eval、live canary、desktop/mobile E2E |
+| Security | input limit、URL allowlist、best-effort rate limit、sanitized trace |
 
 設計判断と運用方法は [Engineering guide](docs/engineering/README.md) にまとめています。
 
 ## Architecture
 
 ```text
-app/
-  api/
-    agent/            orchestration、Yahoo/OpenAI 呼び出し、NDJSON streaming
-    memory/           長期メモリー更新
-components/
-  AgentResponse.tsx   結論、候補カード、feedback
-  AppShell.tsx        会話状態、履歴、request lifecycle
-  MemoryPanel.tsx     メモリー表示と編集
-  ObservabilityPanel.tsx
-lib/
-  agent/
-    contracts.ts      API と UI の runtime contract
-    heuristics.ts     deterministic fallback
-  i18n.ts             日本語・英語・中国語 UI
-  storage.ts          versioned local persistence
-harness/
-  cases/              代表入力
-  *.test.ts           routing / guardrail / contract eval
-docs/engineering/     architecture、品質基準、運用、ADR
+app/api/agent/          thin HTTP / NDJSON adapter
+lib/agent/
+  orchestrator.ts      bounded state machine
+  model/               Responses + structured intent
+  tools/               typed Yahoo adapters
+  ranking/             deterministic candidate ranking
+  evidence/            final grounding gate
+  memory/              approval-only proposals
+  telemetry/           sanitized traces and usage
+evals/                 120 cases, fixtures, reports
+e2e/                   desktop and mobile primary flows
+components/            quiet user UI and developer log
 ```
 
 ## Local development
@@ -110,19 +110,25 @@ OPENAI_MODEL=gpt-5.6-terra
 
 ```bash
 npm run harness    # agent behavior and contract evals
+npm run eval:deterministic
+npm run eval:model -- --limit=20
+npm run eval:live
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 npm run check      # all checks
 ```
 
-CI は pull request と main への push で typecheck、test、production build を実行します。UI 変更は 1440 × 900 と 390 × 844 の主要フローでも確認します。
+CI は pull request と main への push で typecheck、unit/eval、Chromium E2E、production build を実行します。
 
 ## Engineering documents
 
-- [Architecture](docs/engineering/architecture.md)
-- [AI harness](docs/engineering/ai-harness.md)
-- [Feedback loop](docs/engineering/feedback-loop.md)
-- [Quality gates](docs/engineering/quality-gates.md)
-- [Operations](docs/engineering/operations.md)
-- [ADR: Source-grounded agent](docs/engineering/decisions/0001-source-grounded-agent.md)
+- [Product brief](docs/product-brief.md)
+- [Architecture v2](docs/architecture-v2.md)
+- [Evaluation](docs/evaluation.md)
+- [Measured benchmark](docs/benchmark.md)
+- [Privacy](docs/privacy.md)
+- [Limitations](docs/limitations.md)
+- [Threat model](docs/agent-yh-threat-model.md)
+- [Engineering ADRs](docs/engineering/README.md)
